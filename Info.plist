@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Bridge Defect Report Tool</string>
+
+    <!-- Основная версия для пользователя -->
+    <key>CFBundleShortVersionString</key>
+    <string>1.2.0</string>
+
+    <!-- Внутренний номер сборки -->
+    <key>CFBundleVersion</key>
+    <string>1.2.0</string>
+
+    <!-- Идентификатор приложения (можно придумать свой) -->
+    <key>CFBundleIdentifier</key>
+    <string>com.alexkit.bdrt</string>
+
+    <!-- Иконка приложения (конвертируй .ico в .icns для macOS) -->
+    <key>CFBundleIconFile</key>
+    <string>icon.icns</string>
+</dict>
+</plist>
