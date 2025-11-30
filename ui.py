@@ -213,8 +213,9 @@ class DefectApp:
         self.defect_numodm_map.clear()
         self.defect_categories_by_option.clear()
 
-        for num_odm, name, option, s, d, r, l in rows:
-            self.defect_numodm_map[name] = (num_odm, placement)
+        for num_odm, name, option, s, d, r, l, localization in rows:
+            self.defect_numodm_map[name] = (num_odm, placement, localization
+                                            or "")
             if num_odm not in self.defect_options_by_numodm:
                 self.defect_options_by_numodm[num_odm] = []
             if option:
@@ -225,19 +226,27 @@ class DefectApp:
                 self.defect_categories_by_option[(name, option)] = (s, d, r, l)
 
         self.defect_cb["values"] = sorted(
-            [name for name, (num, pl) in self.defect_numodm_map.items() if
+            [name for name, (num, pl, _) in self.defect_numodm_map.items() if
              pl == placement]
         )
 
     def filter_defect_names(self, event=None):
         text = self.search_entry.get().lower()
         placement = self.placement_cb.get()
-        filtered = [name for name, (num, pl) in self.defect_numodm_map.items() if pl == placement and text in name.lower()]
+        filtered = [
+            name for name, (num, pl, localization) in
+                    self.defect_numodm_map.items() if pl == placement and (
+                            text in name.lower() or text in
+                            localization.lower())
+        ]
         self.defect_cb["values"] = sorted(set(filtered))
 
     def populate_defect_fields(self, event=None):
         name = self.defect_cb.get()
-        num_odm, _ = self.defect_numodm_map.get(name, (None, None))
+        num_odm, placement, localization = self.defect_numodm_map.get(name,
+                                                                   (None,
+                                                                    None,
+                                                                    None))
         options = self.defect_options_by_numodm.get(num_odm, [])
         self.option_cb["values"] = options
         if options:
