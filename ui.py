@@ -207,6 +207,11 @@ class DefectApp:
 
     def load_defects(self, event=None):
         placement = self.placement_cb.get()
+
+        # Сброс предыдущего выбора
+        self.defect_cb.set("")
+        self.option_cb.set("")
+
         rows = self.db.get_defects_by_placement(placement)
 
         self.defect_options_by_numodm.clear()
@@ -214,39 +219,61 @@ class DefectApp:
         self.defect_categories_by_option.clear()
 
         for num_odm, name, option, s, d, r, l, localization in rows:
-            self.defect_numodm_map[name] = (num_odm, placement, localization
-                                            or "")
+            key = (name, localization or "")
+            self.defect_numodm_map[key] = (
+            num_odm, placement, localization or "")
+
             if num_odm not in self.defect_options_by_numodm:
                 self.defect_options_by_numodm[num_odm] = []
             if option:
                 if option not in self.defect_options_by_numodm[num_odm]:
                     self.defect_options_by_numodm[num_odm].append(option)
 
-                # теперь ключ уникален: (название дефекта, опция)
-                self.defect_categories_by_option[(name, option)] = (s, d, r, l)
+            self.defect_categories_by_option[(name, option)] = (s, d, r, l)
 
+        # Combobox с отображением локализации
         self.defect_cb["values"] = sorted(
-            [name for name, (num, pl, _) in self.defect_numodm_map.items() if
-             pl == placement]
+            [f"{name} ({localization})" if localization else name
+             for (name, localization), (num, pl, loc) in
+             self.defect_numodm_map.items()
+             if pl == placement]
         )
 
     def filter_defect_names(self, event=None):
         text = self.search_entry.get().lower()
         placement = self.placement_cb.get()
-        filtered = [
-            name for name, (num, pl, localization) in
-                    self.defect_numodm_map.items() if pl == placement and (
-                            text in name.lower() or text in
-                            localization.lower())
+
+        # фильтруем по name и localization
+        filtered_keys = [
+            key for key, (num_odm, pl, localization) in
+            self.defect_numodm_map.items()
+            if pl == placement and (
+                        text in key[0].lower() or text in key[1].lower())
         ]
-        self.defect_cb["values"] = sorted(set(filtered))
+
+        # отображаем в combobox красиво
+        self.defect_cb["values"] = [
+            f"{name} ({localization})" if localization else name
+            for name, localization in filtered_keys
+        ]
 
     def populate_defect_fields(self, event=None):
-        name = self.defect_cb.get()
-        num_odm, placement, localization = self.defect_numodm_map.get(name,
-                                                                   (None,
-                                                                    None,
-                                                                    None))
+        selected_text = self.defect_cb.get()
+
+        # разбиваем отображаемый текст на name и localization
+        if "(" in selected_text and selected_text.endswith(")"):
+            name, localization = selected_text.rsplit("(", 1)
+            name = name.strip()
+            localization = localization[:-1]  # убрать закрывающую скобку
+        else:
+            name = selected_text
+            localization = ""
+
+        # получаем num_odm и опции по ключу (name, localization)
+        num_odm, _, _ = self.defect_numodm_map.get((name, localization),
+                                                   (None, None, None))
+
+        # заполняем описание дефекта
         options = self.defect_options_by_numodm.get(num_odm, [])
         self.option_cb["values"] = options
         if options:
@@ -256,8 +283,12 @@ class DefectApp:
     def populate_category_fields(self, event=None):
         option = self.option_cb.get()
         defect_name = self.defect_cb.get()
-        key = (defect_name, option)
 
+        # если в combobox добавлена локализация, нужно её убрать для поиска
+        if "(" in defect_name and defect_name.endswith(")"):
+            defect_name = defect_name.rsplit("(", 1)[0].strip()
+
+        key = (defect_name, option)
         if key in self.defect_categories_by_option:
             s, d, r, l = self.defect_categories_by_option[key]
 
@@ -279,7 +310,7 @@ class DefectApp:
     def add_entry(self):
         placement = self.placement_cb.get()
         location = self.location_entry.get()
-        name = self.defect_cb.get()
+        selected_text = self.defect_cb.get()
         option = self.option_cb.get()
         safety = self.safety_entry.get()
         durability = self.durability_entry.get()
@@ -287,9 +318,16 @@ class DefectApp:
         loadcap = self.load_entry.get()
         action_text = self.action_entry.get()
 
-        if not placement or not name:
+        if not placement or not selected_text:
             messagebox.showerror("Ошибка", "Выберите раздел и тип дефекта")
             return
+
+        # Разбираем Combobox на name и localization, сохраняем только name
+        if "(" in selected_text and selected_text.endswith(")"):
+            name, localization = selected_text.rsplit("(", 1)
+            name = name.strip()
+        else:
+            name = selected_text
 
         uid = generate_uid()
         rec = {
