@@ -22,7 +22,7 @@
 ````pyinstaller --noconsole --onefile -n "bridge defect report tool" --add-data "bridge_defects.db;." --add-data "report_template.docx;." --icon="icon.ico" --version-file "version.txt" --name "bdrt.exe" main.py````
 
 ### For macOS/Linux (.pkg and other formats):
-````pyinstaller --noconsole --onefile -n "bridge defect report tool" --add-data "bridge_defects.db:." --add-data "report_template.docx:." --icon="icon.ico" --version-file "version.txt" --name "bdrt.pkg" main.py````
+````pyinstaller --noconsole --onefile -n "bridge defect report tool" --add-data "bridge_defects.db:." --add-data "report_template.docx:." --icon="icon.icns" --version-file "version.txt" --name "bdrt.pkg" main.py````
 
 _____________________________________________________
 
@@ -47,4 +47,4 @@ _____________________________________________________
 ````pyinstaller --noconsole --onefile -n "bridge defect report tool" --add-data "bridge_defects.db;." --add-data "report_template.docx;." --icon="icon.ico" --version-file "version.txt" --name "bdrt.exe" main.py````
 
 ### Для создания .pkg (macOS/Linux) :
-````pyinstaller --noconsole --onefile -n "bridge defect report tool" --add-data "bridge_defects.db:." --add-data "report_template.docx:." --icon="icon.ico" --version-file "version.txt" --name "bdrt.pkg" main.py````
+````pyinstaller --noconsole --onefile -n "bridge defect report tool" --add-data "bridge_defects.db:." --add-data "report_template.docx:." --icon="icon.icns" --version-file "version.txt" --name "bdrt.pkg" main.py````
