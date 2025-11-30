@@ -17,7 +17,8 @@ class Database:
     def get_defects_by_placement(self, placement):
         """Возвращает дефекты для конкретного раздела"""
         self.cursor.execute(
-            "SELECT num_ODM, name, option, safetyClass, durabilityClass, repairabilityClass, loadCapacity "
+            "SELECT num_ODM, name, option, safetyClass, durabilityClass, "
+            "repairabilityClass, loadCapacity, localizationODM "
             "FROM defect_types WHERE placement = ?",
             (placement,)
         )
