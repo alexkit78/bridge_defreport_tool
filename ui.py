@@ -7,7 +7,6 @@ import ctypes
 from database import Database
 from export import export_to_docx
 from utils import generate_uid
-from constants import DB_PATH
 
 
 class DefectApp:
@@ -279,6 +278,20 @@ class DefectApp:
         if options:
             self.option_cb.set(options[0])
             self.populate_category_fields()
+
+        # --- автоподстановка мероприятия по дефекту ---
+        placement = self.placement_cb.get()
+        # получаем num_ODM
+        num_odm, _, _ = self.defect_numodm_map.get((name, localization),
+                                                   (None, None, None))
+
+        # автоподстановка мероприятия
+        if num_odm:
+            repair_action = self.db.get_repair_action(num_odm)
+
+            self.action_entry.delete(0, tk.END)
+            if repair_action:
+                self.action_entry.insert(0, repair_action)
 
     def populate_category_fields(self, event=None):
         option = self.option_cb.get()

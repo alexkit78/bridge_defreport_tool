@@ -8,17 +8,17 @@
 
     <!-- Основная версия для пользователя -->
     <key>CFBundleShortVersionString</key>
-    <string>1.2.0</string>
+    <string>1.3.0</string>
 
     <!-- Внутренний номер сборки -->
     <key>CFBundleVersion</key>
-    <string>1.2.0</string>
+    <string>1.3.0</string>
 
-    <!-- Идентификатор приложения (можно придумать свой) -->
+    <!-- Идентификатор приложения -->
     <key>CFBundleIdentifier</key>
     <string>com.alexkit.bdrt</string>
 
-    <!-- Иконка приложения (конвертируй .ico в .icns для macOS) -->
+    <!-- Иконка приложения -->
     <key>CFBundleIconFile</key>
     <string>icon.icns</string>
 </dict>

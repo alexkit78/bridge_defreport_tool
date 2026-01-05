@@ -23,3 +23,13 @@ class Database:
             (placement,)
         )
         return self.cursor.fetchall()
+
+    def get_repair_action(self, num_odm: str) -> str:
+        self.cursor.execute("""
+            SELECT repairAction
+            FROM defect_types
+            WHERE num_ODM = ?
+            LIMIT 1
+        """, (num_odm,))
+        row = self.cursor.fetchone()
+        return row[0] if row and row[0] else ""
