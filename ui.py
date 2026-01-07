@@ -47,19 +47,24 @@ class DefectApp:
         if not self.report_data:
             messagebox.showwarning("Нет данных", "Нет дефектов для "
                                                  "сохранения.")
-            return
+            return False
 
         file_path = filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=[("JSON project", "*.json")]
+            defaultextension=".docx",
+            filetypes=[("Word document", "*.docx"),
+                       ("JSON project", "*.json")]
         )
         if not file_path:
             return False
 
         try:
-            save_json(file_path, self.report_data)
+            if file_path.lower().endswith(".json"):
+                save_json(file_path, self.report_data)
+            else:
+                export_to_docx(file_path, self.report_data)
+
             self.is_dirty = False
-            self.status_label.config(text="Данные сохранены")
+            self.status_label.config(text=f"Файл сохранён: {file_path}")
             self.root.after(2000, lambda: self.status_label.config(text=""))
             return True
         except Exception as e:
@@ -186,7 +191,8 @@ class DefectApp:
         self.action_entry.grid(row=13, column=0, columnspan=2, sticky="ew", padx=5, pady=2)
 
         ttk.Button(frame, text="Добавить в отчёт", command=self.add_entry).grid(row=14, column=0, pady=10)
-        ttk.Button(frame, text="Сохранить в Word", command=self.export_docx).grid(row=14, column=1, pady=10)
+        ttk.Button(frame, text="Сохранить",
+                   command=self.save_project).grid(row=14, column=1, pady=10)
 
         self.load_placements()
 
@@ -323,7 +329,7 @@ class DefectApp:
                 return
             if answer:
                 # Да → сохранить
-                saved = self.export_docx() or self.save_project()
+                saved = self.save_project()
                 if not saved:
                     return
         self.root.destroy()
