@@ -1,18 +1,20 @@
 # ui.py
 import sys
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, Menu
 import ctypes
 
 from database import Database
 from export import export_to_docx
 from utils import generate_uid
+from project_storage import save_json, load_json
 
 
 class DefectApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Оценка состояния мостового сооружения")
+        self.build_menu()
 
         # инициализация БД
         self.db = Database()
@@ -24,6 +26,117 @@ class DefectApp:
         self.defect_categories_by_option = {}
 
         self.build_ui()
+        self.is_dirty = False
+
+    def build_menu(self):
+        menubar: Menu = tk.Menu(self.root)
+        
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Новое сооружение", 
+                              command=self.new_project)
+        file_menu.add_command(label="Открыть...", command=self.load_project)
+        file_menu.add_separator()
+        file_menu.add_command(label="Сохранить...", command=self.save_project)
+        file_menu.add_separator()
+        file_menu.add_command(label="Выход", command=self.root.quit)
+        
+        menubar.add_cascade(label="Файл", menu=file_menu)
+        self.root.config(menu=menubar)
+
+    def save_project(self):
+        if not self.report_data:
+            messagebox.showwarning("Нет данных", "Нет дефектов для "
+                                                 "сохранения.")
+            return False
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".docx",
+            filetypes=[("Word document", "*.docx"),
+                       ("JSON project", "*.json")]
+        )
+        if not file_path:
+            return False
+
+        try:
+            if file_path.lower().endswith(".json"):
+                save_json(file_path, self.report_data)
+            else:
+                export_to_docx(file_path, self.report_data)
+
+            self.is_dirty = False
+            self.status_label.config(text=f"Файл сохранён: {file_path}")
+            self.root.after(2000, lambda: self.status_label.config(text=""))
+            return True
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить файл:\n{e}")
+            return False
+
+    def load_project(self):
+        file_path = filedialog.askopenfilename(
+            filetypes=[("JSON project", "*.json")]
+        )
+        if not file_path:
+            return
+
+        try:
+            data = load_json(file_path)
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось загрузить файл:\n{e}")
+            return
+
+        self.report_data.clear()
+        self.table.delete(*self.table.get_children())
+
+        for rec in data:
+            uid = rec.get("uid")
+            if not uid:
+                continue
+
+            self.report_data.append(rec)
+
+            cats = []
+            if rec.get("safety"):
+                cats.append(f"Б{rec['safety']}")
+            if rec.get("durability"):
+                cats.append(f"Д{rec['durability']}")
+            if rec.get("repairability"):
+                cats.append(f"Р{rec['repairability']}")
+            try:
+                if rec.get("loadcap") and int(rec["loadcap"]) == 1:
+                    cats.append("Г")
+            except:
+                pass
+
+            self.table.insert(
+                "",
+                "end",
+                iid=uid,
+                values=(
+                    rec.get("placement", ""),
+                    rec.get("location", ""),
+                    rec.get("name", ""),
+                    rec.get("option", ""),
+                    ", ".join(cats),
+                    rec.get("action", "")
+                )
+            )
+
+        self.update_status_bar()
+        self.status_label.config(text="Данные загружены")
+        self.root.after(2000, lambda: self.status_label.config(text=""))
+        self.is_dirty = False
+
+    def new_project(self):
+        if self.report_data:
+            if not messagebox.askyesno(
+                "Новый проект",
+                "Текущие данные будут потеряны. Продолжить?"
+            ):
+                return
+        self.report_data.clear()
+        self.table.delete(*self.table.get_children())
+        self.update_status_bar()
+        self.is_dirty = False
 
     def build_ui(self):
         frame = ttk.Frame(self.root, padding=10)
@@ -78,7 +191,8 @@ class DefectApp:
         self.action_entry.grid(row=13, column=0, columnspan=2, sticky="ew", padx=5, pady=2)
 
         ttk.Button(frame, text="Добавить в отчёт", command=self.add_entry).grid(row=14, column=0, pady=10)
-        ttk.Button(frame, text="Сохранить в Word", command=self.export_docx).grid(row=14, column=1, pady=10)
+        ttk.Button(frame, text="Сохранить",
+                   command=self.save_project).grid(row=14, column=1, pady=10)
 
         self.load_placements()
 
@@ -159,6 +273,7 @@ class DefectApp:
 
         # Горячие клавиши в любой раскладке
         self.root.bind_all("<Control-KeyPress>", self._global_shortcuts)
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     # ---------------- UI callbacks ----------------
 
@@ -200,6 +315,24 @@ class DefectApp:
     def _on_mousewheel_mac(self, event):
         # MacOS: event.delta небольшое значение
         self.table.yview_scroll(int(-1 * event.delta), 'units')
+
+    def on_close(self):
+        if self.is_dirty:
+            answer = messagebox.askyesnocancel(
+                "Несохранённые данные",
+                "Данные были изменены, но не сохранены.\n\n"
+                "Cохранить перед выходом?"
+            )
+
+            if answer is None:
+                # Cancel
+                return
+            if answer:
+                # Да → сохранить
+                saved = self.save_project()
+                if not saved:
+                    return
+        self.root.destroy()
 
     def load_placements(self):
         self.placement_cb['values'] = self.db.get_placements()
@@ -281,9 +414,6 @@ class DefectApp:
 
         # --- автоподстановка мероприятия по дефекту ---
         placement = self.placement_cb.get()
-        # получаем num_ODM
-        num_odm, _, _ = self.defect_numodm_map.get((name, localization),
-                                                   (None, None, None))
 
         # автоподстановка мероприятия
         if num_odm:
@@ -373,6 +503,7 @@ class DefectApp:
         self.count_label.config(text=f"Всего дефектов: {len(self.report_data)}")
         self.root.after(2000, lambda: self.status_label.config(text=""))
         self.action_entry.delete(0, tk.END)
+        self.is_dirty = True
 
     def start_cell_edit(self, event):
         # Редактируемые столбцы: 1=location, 2=name, 3=option, 5=action
@@ -452,6 +583,7 @@ class DefectApp:
                         rec['action'] = new_value
                     break
             self.update_status_bar()
+            self.is_dirty = True
 
         def cancel_edit(event=None):
             entry.destroy()
@@ -480,15 +612,25 @@ class DefectApp:
             self.report_data = [r for r in self.report_data if r['uid'] != iid]
             self.table.delete(iid)
         self.update_status_bar()
+        self.is_dirty = True
+
 
     def export_docx(self):
         if not self.report_data:
             messagebox.showwarning("Нет данных", "Сначала добавьте данные в отчёт.")
-            return
-        file_path = filedialog.asksaveasfilename(defaultextension=".docx", filetypes=[("Word document", "*.docx")])
-        if file_path:
-            export_to_docx(file_path, self.report_data)
-            messagebox.showinfo("Готово", f"Файл сохранён: {file_path}")
+            return False
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".docx",
+            filetypes=[("Word document", "*.docx")]
+        )
+        if not file_path:
+            return False
+
+        export_to_docx(file_path, self.report_data)
+        self.is_dirty = False
+        messagebox.showinfo("Готово", f"Файл сохранён: {file_path}")
+        return True
 
 
 if __name__ == "__main__":
