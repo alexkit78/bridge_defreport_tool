@@ -414,9 +414,6 @@ class DefectApp:
 
         # --- автоподстановка мероприятия по дефекту ---
         placement = self.placement_cb.get()
-        # получаем num_ODM
-        num_odm, _, _ = self.defect_numodm_map.get((name, localization),
-                                                   (None, None, None))
 
         # автоподстановка мероприятия
         if num_odm:
