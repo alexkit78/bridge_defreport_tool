@@ -5,4 +5,4 @@ def make_empty_project():
         "bridge": {}, #Form 1
         "spans": [], #Form 2
         "piers": [], #Form 3
-        "defects": []}
+        "defects": []} #Form 5

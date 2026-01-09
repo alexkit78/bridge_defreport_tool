@@ -39,8 +39,13 @@ class DefectApp:
         self.notebook.add(self.tab_piers, text="Опоры")
         self.notebook.add(self.tab_defects, text="Дефекты")
 
+        self.bridge_vars = {}  # ключ поля -> tk.StringVar
+        self.span_forms = {}  # uid -> {"frame": Frame, "vars": {key: StringVar}}
+        self.pier_forms = {} # uid -> {"frame": Frame, "vars": {key: StringVar}}
+
         self.build_ui()
         self.is_dirty = False
+
 
     def build_menu(self):
         menubar: Menu = tk.Menu(self.root)
@@ -101,6 +106,9 @@ class DefectApp:
             return
 
         self.project = project #Загрузка всего проекта
+        self.rebuild_span_tabs()
+        self.rebuild_pier_tabs()
+        self.refresh_general_tab_from_project()
         self.table.delete(*self.table.get_children())
 
         for rec in self.project["defects"]:
@@ -143,15 +151,29 @@ class DefectApp:
         self.is_dirty = False
 
     def new_project(self):
-        if self.project["defects"]:
+
+        if (
+                self.project.get("bridge") or
+                self.project.get("defects") or
+                self.project.get("spans") or
+                self.project.get("piers")
+        ):
             if not messagebox.askyesno(
                 "Новый проект",
                 "Текущие данные будут потеряны. Продолжить?"
             ):
                 return
+        # сбрасываем проект
         self.project = make_empty_project()
+        self.rebuild_span_tabs()
+        self.rebuild_pier_tabs()
+        # очищаем таблицу дефектов
         self.table.delete(*self.table.get_children())
         self.update_status_bar()
+
+        # обновить вкладку Ф1 из проекта (он теперь пустой)
+        self.refresh_general_tab_from_project()
+
         self.is_dirty = False
 
     def build_ui(self):
@@ -291,16 +313,486 @@ class DefectApp:
         # Горячие клавиши в любой раскладке
         self.root.bind_all("<Control-KeyPress>", self._global_shortcuts)
 
-        ttk.Label(self.tab_general, text="Форма 1. Общие сведения (в "
-                                         "разработке)").pack(padx=20, pady=20)
-        ttk.Label(self.tab_spans, text="Форма 2. Пролётные строения (в "
-                                         "разработке)").pack(padx=20, pady=20)
-        ttk.Label(self.tab_piers, text="Форма 3. Опоры (в "
-                                       "разработке)").pack(padx=20, pady=20)
+        self.build_tab_general()
+        self.build_tab_spans()
+        self.build_tab_piers()
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
-    # ---------------- UI callbacks ----------------
+    def build_tab_general(self):
+        # ----- scroll area ---
+        container = ttk.Frame(self.tab_general)
+        container.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(container, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical",
+                                  command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        form_frame = ttk.Frame(canvas, padding=10)
+        canvas_window = canvas.create_window((0, 0), window=form_frame,
+                                             anchor="nw")
+        def _on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def _on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+
+        form_frame.bind("<Configure>", _on_frame_configure)
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        # --- form 1 ---
+        fields = [
+            ("ID моста", "id"),
+            ("Тип сооружения", "structure_type"),
+            ("Пересекаемое препятствие", "obstacle"),
+            ("Дорога / улица", "road"),
+            ("Код дороги", "road_code"),
+            ("км привязка", "km"),
+            ("Код региона", "region_code"),
+            ("Координаты", "coord"),
+            ("Категория дороги", "road_category"),
+            ("Количество полос на мосту", "lanes_bridge"),
+            ("Количество полос на подходах", "lanes_approach"),
+            ("Год постройки", "year_built"),
+            ("Дата обследования (текущее)", "inspection_current"),
+            ("Дата предыдущего обследования", "inspection_prev"),
+            ("Примечания", "notes"),
+        ]
+        # небольшой справочник прямо сейчас (потом заменим на внешний lookups.json)
+        road_category_values = ["I", "II", "III", "IV", "V"]
+
+        def bind_var(key: str) -> tk.StringVar:
+            '''Создаёт StringVar и привязывает его к self.project['bridge']'''
+            var = tk.StringVar(value=self.project["bridge"].get(key, ""))
+
+            def on_change(*_):
+                value = var.get()
+                # записываем в проект
+                self.project["bridge"][key] = value
+                self.is_dirty = True
+
+            var.trace_add("write", on_change)
+            self.bridge_vars[key] = var
+            return var
+
+        # --- группировка полей для красоты (потом возможно убрать) ---
+        lf_main = ttk.LabelFrame(form_frame, text="Основные сведения",
+                                 padding=10)
+        lf_main.pack(fill="x", pady=6)
+
+        lf_location = ttk.LabelFrame(form_frame, text="Расположение / "
+                                                      "дорога", padding=10)
+        lf_location.pack(fill="x", pady=6)
+
+        lf_dates = ttk.LabelFrame(form_frame, text="Даты / примечания",
+                                  padding=10)
+        lf_dates.pack(fill="x", pady=6)
+
+        # раскладка: 2 колонки (лейбл + поле)
+        def add_row(parent, row, label, key, widget_type="entry"):
+            ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w",
+                                               padx=6, pady=4)
+
+            var = bind_var(key)
+
+            if widget_type == "combo":
+                cb = ttk.Combobox(parent, textvariable=var, state="readonly",
+                                  values=road_category_values)
+                cb.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
+                return cb
+            else:
+                e = ttk.Entry(parent, textvariable=var)
+                e.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
+                return e
+
+        for frame in (lf_main, lf_location, lf_dates):
+            frame.grid_columnconfigure(1, weight=1)
+
+        # --- заполняем группы ---
+        r = 0
+        add_row(lf_main, r, "ID моста", "id");
+        r += 1
+        add_row(lf_main, r, "Тип сооружения", "structure_type");
+        r += 1
+        add_row(lf_main, r, "Пересекаемое препятствие", "obstacle");
+        r += 1
+
+        r = 0
+        add_row(lf_location, r, "Дорога / улица", "road");
+        r += 1
+        add_row(lf_location, r, "Код дороги", "road_code");
+        r += 1
+        add_row(lf_location, r, "км привязка", "km");
+        r += 1
+        add_row(lf_location, r, "Код региона", "region_code");
+        r += 1
+        add_row(lf_location, r, "Координаты", "coord");
+        r += 1
+        add_row(lf_location, r, "Категория дороги", "road_category",
+                widget_type="combo");
+        r += 1
+        add_row(lf_location, r, "Количество полос на мосту", "lanes_bridge");
+        r += 1
+        add_row(lf_location, r, "Количество полос на подходах",
+                "lanes_approach");
+        r += 1
+        add_row(lf_location, r, "Год постройки", "year_built");
+        r += 1
+
+        r = 0
+        add_row(lf_dates, r, "Дата обследования (текущее)",
+                "inspection_current");
+        r += 1
+        add_row(lf_dates, r, "Дата предыдущего обследования",
+                "inspection_prev");
+        r += 1
+        add_row(lf_dates, r, "Примечания", "notes");
+        r += 1
+
+        # --- кнопка (пока просто показывает, что в проекте) ---
+        def show_debug():
+            messagebox.showinfo("Bridge data (debug)",
+                                str(self.project["bridge"]))
+
+        btns = ttk.Frame(form_frame)
+        btns.pack(fill="x", pady=10)
+        ttk.Button(btns, text="Показать данные Ф1 (отладка)",
+                   command=show_debug).pack(side="left")
+
+    def refresh_general_tab_from_project(self):
+        # если вкладка ещё не создана или vars ещё нет — просто выходим
+        if not hasattr(self, "bridge_vars"):
+            return
+        bridge = self.project.get("bridge", {})
+        for key, var in self.bridge_vars.items():
+            var.set(bridge.get(key, ""))
+
+    def build_tab_spans(self):
+        root = self.tab_spans
+
+        container = ttk.Frame(root, padding=10)
+        container.pack(fill="both", expand=True)
+
+        #кнопки сверху
+        btns = ttk.Frame(container)
+        btns.pack(fill="x", pady=(0,8))
+
+        ttk.Button(btns, text="Добавить ПС",
+                   command=self.add_span_form).pack(side="left")
+        ttk.Button(btns, text="Удалить ПС",
+                   command=self.delete_current_span_form).pack(side="left",
+                                                               padx=(8,0))
+        # внутренний notebook = "листы" формы 2
+        self.spans_notebook = ttk.Notebook(container)
+        self.spans_notebook.pack(fill="both", expand=True)
+
+        # если в проекте уже есть ПС (например после загрузки) — построим их
+        self.rebuild_span_tabs()
+
+    def rebuild_span_tabs(self):
+        """Перестраивает вкладки ПС из self.project['spans']."""
+        # очистить notebook
+        for tab_id in self.spans_notebook.tabs():
+            self.spans_notebook.forget(tab_id)
+
+        self.span_forms.clear()
+
+        # если пусто — можно сразу создать один лист по умолчанию (по желанию)
+        if not self.project.get("spans"):
+            # Создадим один лист, чтобы пользователю не было пусто
+            self.add_span_form()
+            return
+
+        for st in self.project["spans"]:
+            uid = st.get("uid")
+            if not uid:
+                continue
+            self._create_span_tab_for_item(st)
+
+    def add_span_form(self):
+        """Добавляет новый лист ПС (новый элемент в spans и новую вкладку)."""
+        uid = generate_uid()
+        index = len(self.project["spans"]) + 1
+
+        item = {
+            "uid": uid,
+            "title": f"ПС {index}",
+            "span_system": "",
+            "span_type": "",
+            "deck_structure": "",
+            "main_beam_material": "",
+            "joints_type": "",
+            "span_scheme": "",
+            "span_loads": "",
+            "typical_project": "",
+            "bearings": "",
+            "span_expansion_joints": "",
+            "transverse_conn": "",
+            "span_notes": ""
+        }
+
+        self.project["spans"].append(item)
+        self.is_dirty = True
+
+        self._create_span_tab_for_item(item)
+        # переключимся на новую вкладку
+        self.spans_notebook.select(self.span_forms[uid]["frame"])
+
+    def delete_current_span_form(self):
+        """Удаляет текущий лист ПС."""
+        current_tab = self.spans_notebook.select()
+        if not current_tab:
+            return
+
+        # current_tab — это id вкладки, но нам нужно понять uid
+        uid_to_delete = None
+        for uid, info in self.span_forms.items():
+            if str(info["frame"]) == str(current_tab):
+                uid_to_delete = uid
+                break
+
+        if not uid_to_delete:
+            return
+
+        if not messagebox.askyesno("Удалить ПС",
+                                   "Удалить текущий лист пролётного строения?"):
+            return
+
+        # удалить из данных проекта
+        self.project["spans"] = [x for x in self.project["spans"] if
+                                      x.get("uid") != uid_to_delete]
+        self.is_dirty = True
+
+        # перестроить вкладки заново (проще и надёжнее)
+        self.rebuild_span_tabs()
+
+    def _create_span_tab_for_item(self, item: dict):
+        uid = item["uid"]
+
+        frame = ttk.Frame(self.spans_notebook, padding=10)
+        title = item.get("title") or "ПС"
+        self.spans_notebook.add(frame, text=title)
+
+        frame.grid_columnconfigure(1, weight=1)
+
+        vars_map = {}
+
+        def bind_var(key: str):
+            var = tk.StringVar(value=item.get(key, ""))
+
+            def on_change(*_):
+                item[key] = var.get()
+                self.is_dirty = True
+
+                # если изменили title — обновим текст вкладки
+                if key == "title":
+                    # индекс текущей вкладки
+                    try:
+                        tab_index = self.spans_notebook.index(frame)
+                        self.spans_notebook.tab(tab_index,
+                                                text=var.get() or "ПС")
+                    except Exception:
+                        pass
+
+            var.trace_add("write", on_change)
+            vars_map[key] = var
+            return var
+
+        fields = [
+            ("Номера пролётных строений", "title"),
+            ("Статическая система", "span_system"),
+            ("Пролетное строение (тип)", "span_type"),
+            ("Конструкция плиты ПЧ", "deck_structure"),
+            ("Материал главных балок", "main_beam_material"),
+            ("Тип стыков", "joints_type"),
+            ("Продольная схема", "span_scheme"),
+            ("Нагрузки", "span_loads"),
+            ("Типовой проект", "typical_project"),
+            ("Опорные части", "bearings"),
+            ("Деформационные швы (Ф2)", "span_expansion_joints"),
+            ("Поперечное объединение", "transverse_conn"),
+            ("Примечания (Ф2)", "span_notes"),
+        ]
+
+        for r, (label, key) in enumerate(fields):
+            ttk.Label(frame, text=label).grid(row=r, column=0, sticky="w",
+                                              padx=6, pady=4)
+            e = ttk.Entry(frame, textvariable=bind_var(key))
+            e.grid(row=r, column=1, sticky="ew", padx=6, pady=4)
+
+        self.span_forms[uid] = {"frame": frame, "vars": vars_map}
+
+    def build_tab_piers(self):
+        root = self.tab_piers
+
+        container = ttk.Frame(root, padding=10)
+        container.pack(fill="both", expand=True)
+
+        btns = ttk.Frame(container)
+        btns.pack(fill="x", pady=(0, 8))
+
+        ttk.Button(btns, text="Добавить опору",
+                   command=self.add_pier_form).pack(side="left")
+        ttk.Button(btns, text="Удалить опору",
+                   command=self.delete_current_pier_form).pack(side="left",
+                                                               padx=(8, 0))
+
+        self.piers_notebook = ttk.Notebook(container)
+        self.piers_notebook.pack(fill="both", expand=True)
+
+        self.rebuild_pier_tabs()
+
+    def rebuild_pier_tabs(self):
+        """Перестраивает вкладки опор из self.project['piers']."""
+        self.project.setdefault("piers", [])
+
+        for tab_id in self.piers_notebook.tabs():
+            self.piers_notebook.forget(tab_id)
+
+        self.pier_forms.clear()
+
+        if not self.project["piers"]:
+            self.add_pier_form()
+            return
+
+        for item in self.project["piers"]:
+            uid = item.get("uid")
+            if not uid:
+                continue
+            self._create_pier_tab_for_item(item)
+
+    def add_pier_form(self):
+        """Добавляет новый лист опоры (новый элемент в piers и новую вкладку)."""
+        self.project.setdefault("piers", [])
+
+        uid = generate_uid()
+        index = len(self.project["piers"]) + 1
+
+        item = {
+            "uid": uid,
+            "title": f"Опора {index}",
+
+            "piers_type": "",
+            "foundation_type": "",
+            "pier_material": "",
+            "pier_height": "",
+            "foundation_depth": "",
+            "pier_typical_project": "",
+
+            "pier_size_a": "",
+            "pier_size_b": "",
+            "piles_qty": "",
+            "piles_spacing": "",
+            "pier_scheme": "",
+
+            "pier_rigel_width": "",
+            "pier_rigel_height": "",
+            "pier_rigel_length": "",
+            "pile_section": "",
+
+            "pier_notes": ""
+        }
+
+        self.project["piers"].append(item)
+        self.is_dirty = True
+
+        self._create_pier_tab_for_item(item)
+        self.piers_notebook.select(self.pier_forms[uid]["frame"])
+
+    def delete_current_pier_form(self):
+        """Удаляет текущий лист опоры."""
+        current_tab = self.piers_notebook.select()
+        if not current_tab:
+            return
+
+        uid_to_delete = None
+        for uid, info in self.pier_forms.items():
+            if str(info["frame"]) == str(current_tab):
+                uid_to_delete = uid
+                break
+
+        if not uid_to_delete:
+            return
+
+        if not messagebox.askyesno("Удалить опору",
+                                   "Удалить текущий лист опоры?"):
+            return
+
+        self.project["piers"] = [x for x in self.project["piers"] if
+                                 x.get("uid") != uid_to_delete]
+        self.is_dirty = True
+
+        self.rebuild_pier_tabs()
+
+    def _create_pier_tab_for_item(self, item: dict):
+        uid = item["uid"]
+
+        frame = ttk.Frame(self.piers_notebook, padding=10)
+        title = item.get("title") or "Опора"
+        self.piers_notebook.add(frame, text=title)
+
+        frame.grid_columnconfigure(1, weight=1)
+
+        vars_map = {}
+
+        def bind_var(key: str):
+            var = tk.StringVar(value=item.get(key, ""))
+
+            def on_change(*_):
+                item[key] = var.get()
+                self.is_dirty = True
+
+                if key == "title":
+                    try:
+                        tab_index = self.piers_notebook.index(frame)
+                        self.piers_notebook.tab(tab_index,
+                                                text=var.get() or "Опора")
+                    except Exception:
+                        pass
+
+            var.trace_add("write", on_change)
+            vars_map[key] = var
+            return var
+
+        fields = [
+            ("Номера опор", "title"),
+
+            ("Тип опоры", "piers_type"),
+            ("Тип фундамента", "foundation_type"),
+            ("Материал опоры", "pier_material"),
+            ("Высота опоры", "pier_height"),
+            ("Глубина фундамента", "foundation_depth"),
+            ("Типовой проект опоры", "pier_typical_project"),
+
+            ("Размер вдоль сооружения", "pier_size_a"),
+            ("Размер поперёк сооружения", "pier_size_b"),
+
+            ("Кол-во свай", "piles_qty"),
+            ("Шаг свай", "piles_spacing"),
+            ("Схема опоры", "pier_scheme"),
+
+            ("Ширина ригеля", "pier_rigel_width"),
+            ("Высота ригеля", "pier_rigel_height"),
+            ("Длина ригеля", "pier_rigel_length"),
+
+            ("Сечение свай", "pile_section"),
+
+            ("Примечания (Ф3)", "pier_notes"),
+        ]
+
+        for r, (label, key) in enumerate(fields):
+            ttk.Label(frame, text=label).grid(row=r, column=0, sticky="w",
+                                              padx=6, pady=4)
+            e = ttk.Entry(frame, textvariable=bind_var(key))
+            e.grid(row=r, column=1, sticky="ew", padx=6, pady=4)
+
+        self.pier_forms[uid] = {"frame": frame, "vars": vars_map}
+
+    # ------- UI callbacks ----------------
 
     def _global_shortcuts(self, event):
         key = event.keysym.lower()
