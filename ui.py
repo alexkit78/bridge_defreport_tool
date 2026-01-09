@@ -8,6 +8,7 @@ from database import Database
 from export import export_to_docx
 from utils import generate_uid
 from project_storage import save_json, load_json
+from project_model import make_empty_project
 
 
 class DefectApp:
@@ -20,10 +21,23 @@ class DefectApp:
         self.db = Database()
 
         # список дефектов, которые пойдут в отчёт
-        self.report_data = []
+        self.project = make_empty_project()
         self.defect_options_by_numodm = {}
         self.defect_numodm_map = {}
         self.defect_categories_by_option = {}
+
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill="both", expand=True)
+
+        self.tab_general = ttk.Frame(self.notebook)
+        self.tab_spans = ttk.Frame(self.notebook)
+        self.tab_piers = ttk.Frame(self.notebook)
+        self.tab_defects = ttk.Frame(self.notebook)
+
+        self.notebook.add(self.tab_general, text="Общие сведения")
+        self.notebook.add(self.tab_spans, text="Пролётные строения")
+        self.notebook.add(self.tab_piers, text="Опоры")
+        self.notebook.add(self.tab_defects, text="Дефекты")
 
         self.build_ui()
         self.is_dirty = False
@@ -44,7 +58,7 @@ class DefectApp:
         self.root.config(menu=menubar)
 
     def save_project(self):
-        if not self.report_data:
+        if not self.project["defects"]:
             messagebox.showwarning("Нет данных", "Нет дефектов для "
                                                  "сохранения.")
             return False
@@ -59,9 +73,9 @@ class DefectApp:
 
         try:
             if file_path.lower().endswith(".json"):
-                save_json(file_path, self.report_data)
+                save_json(file_path, self.project)
             else:
-                export_to_docx(file_path, self.report_data)
+                export_to_docx(file_path, self.project["defects"])
 
             self.is_dirty = False
             self.status_label.config(text=f"Файл сохранён: {file_path}")
@@ -79,20 +93,20 @@ class DefectApp:
             return
 
         try:
-            data = load_json(file_path)
+            project = load_json(file_path)
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось загрузить файл:\n{e}")
             return
 
-        self.report_data.clear()
+        self.project = project #Загрузка всего проекта
         self.table.delete(*self.table.get_children())
 
-        for rec in data:
+        for rec in self.project["defects"]:
             uid = rec.get("uid")
             if not uid:
                 continue
 
-            self.report_data.append(rec)
+            #self.report_data.append(rec)
 
             cats = []
             if rec.get("safety"):
@@ -127,19 +141,19 @@ class DefectApp:
         self.is_dirty = False
 
     def new_project(self):
-        if self.report_data:
+        if self.project["defects"]:
             if not messagebox.askyesno(
                 "Новый проект",
                 "Текущие данные будут потеряны. Продолжить?"
             ):
                 return
-        self.report_data.clear()
+        self.project = make_empty_project()
         self.table.delete(*self.table.get_children())
         self.update_status_bar()
         self.is_dirty = False
 
     def build_ui(self):
-        frame = ttk.Frame(self.root, padding=10)
+        frame = ttk.Frame(self.tab_defects, padding=10)
         frame.pack(fill="both", expand=True)
 
         frame.grid_columnconfigure(0, weight=1)
@@ -197,7 +211,7 @@ class DefectApp:
         self.load_placements()
 
         # Таблица с прокруткой
-        table_container = ttk.Frame(self.root)
+        table_container = ttk.Frame(self.tab_defects)
         table_container.pack(fill="both", expand=True)
 
         self.tree_scroll_y = ttk.Scrollbar(table_container, orient="vertical")
@@ -243,11 +257,12 @@ class DefectApp:
                                 lambda e: self.table.yview_scroll(1, 'units'))
 
         # строка статуса
-        self.status_label = ttk.Label(self.root, text="",
+        self.status_label = ttk.Label(self.tab_defects, text="",
         foreground="green", anchor="w")
         self.status_label.pack(side="left", fill="x", expand=True, padx=10,
                                pady=0)
-        self.count_label = ttk.Label(self.root, text="Всего дефектов: 0", anchor="e")
+        self.count_label = ttk.Label(self.tab_defects, text="Всего дефектов: "
+                                                           "0", anchor="e")
         self.count_label.pack(side="right", padx=10, pady=0)
 
         self.root.bind_class("Entry", "<Control-a>",
@@ -273,6 +288,14 @@ class DefectApp:
 
         # Горячие клавиши в любой раскладке
         self.root.bind_all("<Control-KeyPress>", self._global_shortcuts)
+
+        ttk.Label(self.tab_general, text="Форма 1. Общие сведения (в "
+                                         "разработке)").pack(padx=20, pady=20)
+        ttk.Label(self.tab_spans, text="Форма 2. Пролётные строения (в "
+                                         "разработке)").pack(padx=20, pady=20)
+        ttk.Label(self.tab_piers, text="Форма 3. Опоры (в "
+                                       "разработке)").pack(padx=20, pady=20)
+
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     # ---------------- UI callbacks ----------------
@@ -448,7 +471,7 @@ class DefectApp:
             self.load_entry.insert(0, l)
 
     def update_status_bar(self):
-        total = len(self.report_data)
+        total = len(self.project["defects"])
         self.count_label.config(text=f"Всего дефектов: {total}")
     def add_entry(self):
         placement = self.placement_cb.get()
@@ -485,7 +508,7 @@ class DefectApp:
             'loadcap': loadcap,
             'action': action_text
         }
-        self.report_data.append(rec)
+        self.project["defects"].append(rec)
 
         cats = []
         if safety: cats.append(f"Б{safety}")
@@ -500,7 +523,8 @@ class DefectApp:
         self.table.insert("", "end", iid=uid, values=(placement, location, name, option, ", ".join(cats), action_text))
 
         self.status_label.config(text="Строка добавлена в отчёт")
-        self.count_label.config(text=f"Всего дефектов: {len(self.report_data)}")
+        self.count_label.config(text=f"Всего дефектов: "
+                                     f"{len(self.project['defects'])}")
         self.root.after(2000, lambda: self.status_label.config(text=""))
         self.action_entry.delete(0, tk.END)
         self.is_dirty = True
@@ -570,8 +594,8 @@ class DefectApp:
             self.table.item(row_id, values=values)
             entry.destroy()
 
-            # синхронизация report_data
-            for rec in self.report_data:
+            # синхронизация project["defects"]
+            for rec in self.project["defects"]:
                 if rec['uid'] == row_id:
                     if col_index == 1:
                         rec['location'] = new_value
@@ -609,14 +633,15 @@ class DefectApp:
             return
         for iid in sel:
             # удалить из report_data
-            self.report_data = [r for r in self.report_data if r['uid'] != iid]
+            self.project["defects"] = [r for r in self.project["defects"] if r[
+                'uid'] != iid]
             self.table.delete(iid)
         self.update_status_bar()
         self.is_dirty = True
 
 
     def export_docx(self):
-        if not self.report_data:
+        if not self.project["defects"]:
             messagebox.showwarning("Нет данных", "Сначала добавьте данные в отчёт.")
             return False
 
@@ -627,7 +652,7 @@ class DefectApp:
         if not file_path:
             return False
 
-        export_to_docx(file_path, self.report_data)
+        export_to_docx(file_path, self.project["defects"])
         self.is_dirty = False
         messagebox.showinfo("Готово", f"Файл сохранён: {file_path}")
         return True
