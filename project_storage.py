@@ -15,7 +15,7 @@ def load_json(path) -> dict:
     if not isinstance(data, dict):
         raise ValueError("Некорректный формат проекта: ожидался JSON-объект")
 
-    for key in ("bridge", "span_types", "pier_types", "defects"):
+    for key in ("bridge", "spans", "piers", "defects"):
         if key not in data:
             raise ValueError(f"Некорректный формат проекта: нет ключа '{key}'")
     return data

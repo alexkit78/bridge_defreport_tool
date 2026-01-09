@@ -58,9 +58,11 @@ class DefectApp:
         self.root.config(menu=menubar)
 
     def save_project(self):
-        if not self.project["defects"]:
-            messagebox.showwarning("Нет данных", "Нет дефектов для "
-                                                 "сохранения.")
+        is_empty = (not self.project["bridge"]) and (not self.project[
+            "defects"]) and (not self.project["spans"]) and (not
+            self.project["piers"])
+        if is_empty:
+            messagebox.showwarning("Нет данных", "Проект пустой — нечего сохранять.")
             return False
 
         file_path = filedialog.asksaveasfilename(
