@@ -1,7 +1,8 @@
 import sys
 import tkinter as tk
 import ctypes
-from ui import DefectApp
+from ui import DefectApp 
+
 
 if __name__ == "__main__":
     if sys.platform.startswith('win'):
