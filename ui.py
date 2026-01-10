@@ -88,7 +88,7 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
             if file_path.lower().endswith(".json"):
                 save_json(file_path, self.project)
             else:
-                export_to_docx(file_path, self.project["defects"])
+                export_to_docx(file_path, self.project)
 
             self.is_dirty = False
             self.status_label.config(text=f"Файл сохранён: {file_path}")
@@ -122,8 +122,7 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
             if not uid:
                 continue
 
-            #self.report_data.append(rec)
-
+            
             cats = []
             if rec.get("safety"):
                 cats.append(f"Б{rec['safety']}")
@@ -211,6 +210,7 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
         self.root.destroy()
 
     def export_docx(self):
+        # Временно: экспортируем только если есть дефекты
         if not self.project["defects"]:
             messagebox.showwarning("Нет данных", "Сначала добавьте данные в отчёт.")
             return False
@@ -222,7 +222,7 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
         if not file_path:
             return False
 
-        export_to_docx(file_path, self.project["defects"])
+        export_to_docx(file_path, self.project)
         self.is_dirty = False
         messagebox.showinfo("Готово", f"Файл сохранён: {file_path}")
         return True

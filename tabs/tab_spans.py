@@ -46,7 +46,7 @@ class SpansTabMixin:
 
         item = {
             "uid": uid,
-            "title": f"ПС {index}",
+            "title": f"Пролёты № {index}",
             "span_system": "",
             "span_type": "",
             "deck_structure": "",
@@ -95,7 +95,7 @@ class SpansTabMixin:
         uid = item["uid"]
 
         frame = ttk.Frame(self.spans_notebook, padding=10)
-        title = item.get("title") or "ПС"
+        title = item.get("title") or "Пролёты №"
         self.spans_notebook.add(frame, text=title)
 
         frame.grid_columnconfigure(1, weight=1)
@@ -109,7 +109,7 @@ class SpansTabMixin:
                 if key == "title":
                     try:
                         tab_index = self.spans_notebook.index(frame)
-                        self.spans_notebook.tab(tab_index, text=var.get() or "ПС")
+                        self.spans_notebook.tab(tab_index, text=var.get() or "Пролёты №")
                     except Exception:
                         pass
 
@@ -127,9 +127,9 @@ class SpansTabMixin:
             ("Нагрузки", "span_loads"),
             ("Типовой проект", "typical_project"),
             ("Опорные части", "bearings"),
-            ("Деформационные швы (Ф2)", "span_expansion_joints"),
+            ("Деформационные швы", "span_expansion_joints"),
             ("Поперечное объединение", "transverse_conn"),
-            ("Примечания (Ф2)", "span_notes"),
+            ("Примечания", "span_notes"),
         ]
 
         vars_map = {}

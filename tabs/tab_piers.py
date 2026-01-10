@@ -50,7 +50,7 @@ class PiersTabMixin:
 
         item = {
             "uid": uid,
-            "title": f"Опора {index}",
+            "title": f"ОПОРЫ № {index}",
 
             "piers_type": "",
             "foundation_type": "",
@@ -104,7 +104,7 @@ class PiersTabMixin:
         uid = item["uid"]
 
         frame = ttk.Frame(self.piers_notebook, padding=10)
-        title = item.get("title") or "Опора"
+        title = item.get("title") or "ОПОРЫ №"
         self.piers_notebook.add(frame, text=title)
 
         frame.grid_columnconfigure(1, weight=1)
@@ -118,7 +118,7 @@ class PiersTabMixin:
                 if key == "title":
                     try:
                         tab_index = self.piers_notebook.index(frame)
-                        self.piers_notebook.tab(tab_index, text=var.get() or "Опора")
+                        self.piers_notebook.tab(tab_index, text=var.get() or "ОПОРЫ №")
                     except Exception:
                         pass
 
