@@ -1,7 +1,10 @@
 # tabs/tab_piers.py
 import tkinter as tk
 from tkinter import ttk, messagebox
-
+from tabs.scrollable import make_scrollable_frame
+from dictionary import (
+    PIERS_TYPE, FOUNDATION_TYPE, MATERIAL, FOUNDATION_DEPTH_DEFAULT
+)
 
 class PiersTabMixin:
     def build_tab_piers(self):
@@ -56,7 +59,7 @@ class PiersTabMixin:
             "foundation_type": "",
             "pier_material": "",
             "pier_height": "",
-            "foundation_depth": "",
+            "foundation_depth": "нет сведений",
             "pier_typical_project": "",
 
             "pier_size_a": "",
@@ -77,7 +80,7 @@ class PiersTabMixin:
         self.is_dirty = True
 
         self._create_pier_tab_for_item(item)
-        self.piers_notebook.select(self.pier_forms[uid]["frame"])
+        self.piers_notebook.select(self.pier_forms[uid]["tab"])
 
     def delete_current_pier_form(self):
         current_tab = self.piers_notebook.select()
@@ -86,7 +89,7 @@ class PiersTabMixin:
 
         uid_to_delete = None
         for uid, info in self.pier_forms.items():
-            if str(info["frame"]) == str(current_tab):
+            if str(info["tab"]) == str(current_tab):
                 uid_to_delete = uid
                 break
 
@@ -103,11 +106,12 @@ class PiersTabMixin:
     def _create_pier_tab_for_item(self, item: dict):
         uid = item["uid"]
 
-        frame = ttk.Frame(self.piers_notebook, padding=10)
-        title = item.get("title") or "ОПОРЫ №"
-        self.piers_notebook.add(frame, text=title)
+        tab = ttk.Frame(self.piers_notebook, padding=0)
+        title = item.get("title") or "Пролёты №"
+        self.piers_notebook.add(tab, text=title)
 
-        frame.grid_columnconfigure(1, weight=1)
+        inner = make_scrollable_frame(tab)
+        inner.grid_columnconfigure(1, weight=1)
 
         def bind_var(key: str):
             var = tk.StringVar(value=item.get(key, ""))
@@ -117,40 +121,66 @@ class PiersTabMixin:
                 self.is_dirty = True
                 if key == "title":
                     try:
-                        tab_index = self.piers_notebook.index(frame)
+                        tab_index = self.piers_notebook.index(tab)
                         self.piers_notebook.tab(tab_index, text=var.get() or "ОПОРЫ №")
                     except Exception:
                         pass
 
             var.trace_add("write", on_change)
             return var
+        
+        def add_row(parent, row, label, key, spec):
+            ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=6, pady=4)
+            var = bind_var(key)
+
+            if spec == "entry":
+                e = ttk.Entry(parent, textvariable=var)
+                e.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
+                return e
+
+            # spec = ("combo", values, editable)
+            if isinstance(spec, tuple) and len(spec) >= 2 and spec[0] == "combo":
+                values = spec[1]
+                editable = bool(spec[2]) if len(spec) >= 3 else False
+                cb = ttk.Combobox(
+                    parent,
+                    textvariable=var,
+                    values=values,
+                    state=("normal" if editable else "readonly")
+                )
+                cb.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
+                return cb
+
+            # fallback
+            e = ttk.Entry(parent, textvariable=var)
+            e.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
+            return e
 
         fields = [
-            ("Номера опор", "title"),
-            ("Тип опоры", "piers_type"),
-            ("Тип фундамента", "foundation_type"),
-            ("Материал опоры", "pier_material"),
-            ("Высота опоры", "pier_height"),
-            ("Глубина фундамента", "foundation_depth"),
-            ("Типовой проект опоры", "pier_typical_project"),
-            ("Размер вдоль сооружения", "pier_size_a"),
-            ("Размер поперёк сооружения", "pier_size_b"),
-            ("Кол-во свай", "piles_qty"),
-            ("Шаг свай", "piles_spacing"),
-            ("Схема опоры", "pier_scheme"),
-            ("Ширина ригеля", "pier_rigel_width"),
-            ("Высота ригеля", "pier_rigel_height"),
-            ("Длина ригеля", "pier_rigel_length"),
-            ("Сечение свай", "pile_section"),
-            ("Примечания (Ф3)", "pier_notes"),
+            ("Номера опор", "title", "entry"),
+
+            ("Тип опор", "piers_type", ("combo", PIERS_TYPE, True)),
+            ("Тип фундамента", "foundation_type", ("combo", FOUNDATION_TYPE, True)),
+            ("Материал опор", "pier_material", ("combo", MATERIAL, True)),
+            ("Высота опоры", "pier_height", "entry"),
+            ("Глубина фундамента", "foundation_depth", ("combo", FOUNDATION_DEPTH_DEFAULT, True)),
+            ("Типовой проект опоры", "pier_typical_project", "entry"),
+
+            ("Размер вдоль сооружения", "pier_size_a", "entry"),
+            ("Размер поперёк сооружения", "pier_size_b", "entry"),
+            ("Кол-во свай", "piles_qty", "entry"),
+            ("Шаг свай", "piles_spacing", "entry"),
+            ("Схема опоры", "pier_scheme", "entry"),
+
+            ("Ширина ригеля", "pier_rigel_width", "entry"),
+            ("Высота ригеля", "pier_rigel_height", "entry"),
+            ("Длина ригеля", "pier_rigel_length", "entry"),
+            ("Сечение свай", "pile_section", "entry"),
+
+            ("Примечания", "pier_notes", "entry"),
         ]
+        
+        for r, (label, key, spec) in enumerate(fields):
+                add_row(inner, r, label, key, spec)
 
-        vars_map = {}
-        for r, (label, key) in enumerate(fields):
-            ttk.Label(frame, text=label).grid(row=r, column=0, sticky="w", padx=6, pady=4)
-            var = bind_var(key)
-            vars_map[key] = var
-            e = ttk.Entry(frame, textvariable=var)
-            e.grid(row=r, column=1, sticky="ew", padx=6, pady=4)
-
-        self.pier_forms[uid] = {"frame": frame, "vars": vars_map}
+        self.pier_forms[uid] = {"tab": tab}

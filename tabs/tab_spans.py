@@ -1,7 +1,11 @@
 # tabs/tab_spans.py
 import tkinter as tk
 from tkinter import ttk, messagebox
-
+from tabs.scrollable import make_scrollable_frame
+from dictionary import (
+    SPAN_SYSTEM, SPAN_TYPE, DECK_STRUCTURE, MATERIAL, JOINTS_TYPE,
+    BEARINGS, EXPANSION_JOINTS, TRANSVERSE_CONN, PAVEMENT
+)
 
 class SpansTabMixin:
     def build_tab_spans(self):
@@ -47,25 +51,51 @@ class SpansTabMixin:
         item = {
             "uid": uid,
             "title": f"Пролёты № {index}",
+
             "span_system": "",
             "span_type": "",
             "deck_structure": "",
             "main_beam_material": "",
             "joints_type": "",
             "span_scheme": "",
-            "span_loads": "",
+
+            "span_width_B": "",
+            "span_width_G": "",
+            "span_width_C1": "",
+            "span_width_C2": "",
+            "span_width_T1": "",
+            "span_width_T2": "",
+
+            "span_year": "",
             "typical_project": "",
             "bearings": "",
             "span_expansion_joints": "",
             "transverse_conn": "",
-            "span_notes": ""
+            "transverse_scheme": "",
+
+            "deck_thickness": "",
+            "deck_material": "",
+
+            "pavement_thickness": "",
+            "pavement_extrathickness": "",
+            "pavement_material": "",
+
+            "main_beams_qty": "",
+            "main_beam_h_mid": "",
+            "main_beam_h_support": "",
+
+            "cross_beams": "",
+            "long_beams": "",
+            "extra_loads": "",
+
+            "span_notes": "",
         }
 
         self.project["spans"].append(item)
         self.is_dirty = True
 
         self._create_span_tab_for_item(item)
-        self.spans_notebook.select(self.span_forms[uid]["frame"])
+        self.spans_notebook.select(self.span_forms[uid]["tab"])
 
     def delete_current_span_form(self):
         current_tab = self.spans_notebook.select()
@@ -74,7 +104,7 @@ class SpansTabMixin:
 
         uid_to_delete = None
         for uid, info in self.span_forms.items():
-            if str(info["frame"]) == str(current_tab):
+            if str(info["tab"]) == str(current_tab):
                 uid_to_delete = uid
                 break
 
@@ -94,12 +124,14 @@ class SpansTabMixin:
     def _create_span_tab_for_item(self, item: dict):
         uid = item["uid"]
 
-        frame = ttk.Frame(self.spans_notebook, padding=10)
+        tab = ttk.Frame(self.spans_notebook, padding=0)
         title = item.get("title") or "Пролёты №"
-        self.spans_notebook.add(frame, text=title)
+        self.spans_notebook.add(tab, text=title)
 
-        frame.grid_columnconfigure(1, weight=1)
+        inner = make_scrollable_frame(tab)
+        inner.grid_columnconfigure(1, weight=1)
 
+        
         def bind_var(key: str):
             var = tk.StringVar(value=item.get(key, ""))
 
@@ -108,37 +140,86 @@ class SpansTabMixin:
                 self.is_dirty = True
                 if key == "title":
                     try:
-                        tab_index = self.spans_notebook.index(frame)
+                        tab_index = self.spans_notebook.index(tab)
                         self.spans_notebook.tab(tab_index, text=var.get() or "Пролёты №")
                     except Exception:
                         pass
 
             var.trace_add("write", on_change)
             return var
+        
+        def add_row(parent, row, label, key, spec):
+            ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=6, pady=4)
+            var = bind_var(key)
+
+            if spec == "entry":
+                e = ttk.Entry(parent, textvariable=var)
+                e.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
+                return e
+
+            # spec = ("combo", values, editable)
+            if isinstance(spec, tuple) and len(spec) >= 2 and spec[0] == "combo":
+                values = spec[1]
+                editable = bool(spec[2]) if len(spec) >= 3 else False
+                cb = ttk.Combobox(
+                    parent,
+                    textvariable=var,
+                    values=values,
+                    state=("normal" if editable else "readonly")
+                )
+                cb.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
+                return cb
+
+            # fallback
+            e = ttk.Entry(parent, textvariable=var)
+            e.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
+            return e
 
         fields = [
-            ("Номера пролётных строений", "title"),
-            ("Статическая система", "span_system"),
-            ("Пролетное строение (тип)", "span_type"),
-            ("Конструкция плиты ПЧ", "deck_structure"),
-            ("Материал главных балок", "main_beam_material"),
-            ("Тип стыков", "joints_type"),
-            ("Продольная схема", "span_scheme"),
-            ("Нагрузки", "span_loads"),
-            ("Типовой проект", "typical_project"),
-            ("Опорные части", "bearings"),
-            ("Деформационные швы", "span_expansion_joints"),
-            ("Поперечное объединение", "transverse_conn"),
-            ("Примечания", "span_notes"),
+            ("Номера пролётных строений", "title", "entry"),
+
+            ("Статическая система", "span_system", ("combo", SPAN_SYSTEM, True)),
+            ("Пролетное строение (тип)", "span_type", ("combo", SPAN_TYPE, True)),
+            ("Конструкция плиты проезжей части", "deck_structure", ("combo", DECK_STRUCTURE, True)),
+            ("Материал главных балок", "main_beam_material", ("combo", MATERIAL, True)),
+            ("Тип стыков", "joints_type", ("combo", JOINTS_TYPE, True)),
+            ("Продольная схема", "span_scheme", "entry"),
+
+            ("Ширина В", "span_width_B", "entry"),
+            ("Ширина Г", "span_width_G", "entry"),
+            ("Ширина C1", "span_width_C1", "entry"),
+            ("Ширина C2", "span_width_C2", "entry"),
+            ("Ширина T1", "span_width_T1", "entry"),
+            ("Ширина T2", "span_width_T2", "entry"),
+
+            ("Год изготовления", "span_year", "entry"),
+            ("Типовой проект", "typical_project", "entry"),
+
+            ("Опорные части", "bearings", ("combo", BEARINGS, True)),
+            ("Деформационные швы", "span_expansion_joints", ("combo", EXPANSION_JOINTS, True)),
+            ("Поперечное объединение", "transverse_conn", ("combo", TRANSVERSE_CONN, True)),
+            ("Поперечная схема", "transverse_scheme", "entry"),
+
+            ("Толщина плиты ПЧ", "deck_thickness", "entry"),
+            ("Материал плиты", "deck_material", ("combo", MATERIAL, True)),
+
+            ("Толщина покрытия ПЧ", "pavement_thickness", "entry"),
+            ("Толщина доп. слоя покрытия", "pavement_extrathickness", "entry"),
+            ("Материал покрытия ПЧ", "pavement_material", ("combo", PAVEMENT, True)),
+
+            ("Кол-во главных балок", "main_beams_qty", "entry"),
+            ("Высота балки в середине", "main_beam_h_mid", "entry"),
+            ("Высота балки у опоры", "main_beam_h_support", "entry"),
+
+            ("Поперечные балки", "cross_beams", "entry"),
+            ("Продольные балки", "long_beams", "entry"),
+            ("Доп. нагрузки", "extra_loads", "entry"),
+
+            ("Примечания", "span_notes", "entry"),
         ]
-
-        vars_map = {}
-        for r, (label, key) in enumerate(fields):
-            ttk.Label(frame, text=label).grid(row=r, column=0, sticky="w", padx=6, pady=4)
-            var = bind_var(key)
-            vars_map[key] = var
-            e = ttk.Entry(frame, textvariable=var)
-            e.grid(row=r, column=1, sticky="ew", padx=6, pady=4)
-
-        self.span_forms[uid] = {"frame": frame, "vars": vars_map}
+        
+        for r, (label, key, spec) in enumerate(fields):
+            add_row(inner, r, label, key, spec)
+            
+        self.span_forms[uid] = {"tab": tab}
 

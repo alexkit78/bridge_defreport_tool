@@ -1,3 +1,4 @@
+#main.py
 import sys
 import tkinter as tk
 import ctypes

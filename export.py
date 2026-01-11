@@ -1,5 +1,6 @@
 # export.py
 import shutil
+import re
 from collections import defaultdict
 
 from docx import Document
@@ -13,6 +14,20 @@ from copy import deepcopy
 from docx.oxml.ns import qn
 
 from constants import TEMPLATE_PATH
+from dictionary import BRIDGE_KEYS
+
+FLOAT_1 = {"hydro_B", "hydro_H", "pier_height"}
+FLOAT_2 = {
+    "hydro_V", "under_clearance", "length", "opening",
+    "width_B", "width_G", "width_C1", "width_C2", "width_T1", "width_T2",
+    "guardrails_height_bridge", "guardrails_height_approach",
+    "railings_height",
+    "approach_width1", "approach_width2",
+    "mound_height1", "mound_height2", "span_width_B", "span_width_G", "span_width_C1", "span_width_C2", "span_width_T1", "span_width_T2",
+    "deck_thickness", "pavement_thickness",
+    "main_beam_h_mid", "main_beam_h_support", "pier_size_a", "pier_size_b", "piles_spacing",
+    "pier_rigel_width", "pier_rigel_height", "pier_rigel_length", "pavement_extrathickness",
+}
 
 
 # ==================================================
@@ -72,7 +87,8 @@ def clone_block_between_markers(
     start_marker: str,
     end_marker: str,
     items: list,
-    prefix: str
+    prefix: str,
+    mapping_builder=None
 ):
     """
     Клонирует блок документа, который находится между start_marker и end_marker
@@ -121,16 +137,17 @@ def clone_block_between_markers(
             body.insert(insert_pos, el)
             insert_pos += 1
 
-        # заменяем плейсхолдеры ТОЛЬКО в этой копии
-        mapping = {
-            f"{{{{{prefix}.{k}}}}}": v
-            for k, v in item.items()
-            if k != "uid"
-        }
-        replace_placeholders_in_body_slice(doc, cloned_block, mapping)
+                
         replace_placeholders_in_body_slice(doc, cloned_block, {start_marker: ""})
 
+        if mapping_builder:
+            mapping = mapping_builder(item)
+        else:
+            mapping = {f"{{{{{prefix}.{k}}}}}": v for k,v in item.items() if k!="uid"}
+        replace_placeholders_in_body_slice(doc, cloned_block, mapping)
+
     # В итоге в документе не осталось исходного start_marker, потому что он был внутри block
+
 
 def find_table_after_marker(doc: Document, marker: str) -> Table | None:
     """
@@ -148,10 +165,6 @@ def find_table_after_marker(doc: Document, marker: str) -> Table | None:
 
 
 def remove_marker_everywhere(doc: Document, marker: str):
-    """
-    Удаляет marker, НЕ ломая форматирование.
-    Проходим по runs в абзацах и таблицах.
-    """
     # основной текст
     for p in doc.paragraphs:
         for run in p.runs:
@@ -166,31 +179,36 @@ def remove_marker_everywhere(doc: Document, marker: str):
                         if marker in run.text:
                             run.text = run.text.replace(marker, "")
 
-    # колонтитулы (на всякий)
+    # колонтитулы всех типов
     for section in doc.sections:
-        for p in section.header.paragraphs:
-            for run in p.runs:
-                if marker in run.text:
-                    run.text = run.text.replace(marker, "")
-        for t in section.header.tables:
-            for row in t.rows:
-                for cell in row.cells:
-                    for p in cell.paragraphs:
-                        for run in p.runs:
-                            if marker in run.text:
-                                run.text = run.text.replace(marker, "")
+        headers = [section.header, section.first_page_header, section.even_page_header]
+        footers = [section.footer, section.first_page_footer, section.even_page_footer]
 
-        for p in section.footer.paragraphs:
-            for run in p.runs:
-                if marker in run.text:
-                    run.text = run.text.replace(marker, "")
-        for t in section.footer.tables:
-            for row in t.rows:
-                for cell in row.cells:
-                    for p in cell.paragraphs:
-                        for run in p.runs:
-                            if marker in run.text:
-                                run.text = run.text.replace(marker, "")
+        for hdr in headers:
+            for p in hdr.paragraphs:
+                for run in p.runs:
+                    if marker in run.text:
+                        run.text = run.text.replace(marker, "")
+            for t in hdr.tables:
+                for row in t.rows:
+                    for cell in row.cells:
+                        for p in cell.paragraphs:
+                            for run in p.runs:
+                                if marker in run.text:
+                                    run.text = run.text.replace(marker, "")
+
+        for ftr in footers:
+            for p in ftr.paragraphs:
+                for run in p.runs:
+                    if marker in run.text:
+                        run.text = run.text.replace(marker, "")
+            for t in ftr.tables:
+                for row in t.rows:
+                    for cell in row.cells:
+                        for p in cell.paragraphs:
+                            for run in p.runs:
+                                if marker in run.text:
+                                    run.text = run.text.replace(marker, "")
 
 
 # ==================================================
@@ -270,34 +288,213 @@ def replace_in_table(table: Table, mapping: dict):
                 replace_in_paragraph(p, mapping)
 
 
+
 def replace_placeholders_everywhere(doc: _Document, mapping: dict):
     """
     Заменяет плейсхолдеры:
     - в тексте
     - в таблицах
-    - в колонтитулах
+    - во ВСЕХ вариантах колонтитулов (обычный / первый лист / чётные)
     """
+    # основной текст
     for p in doc.paragraphs:
         replace_in_paragraph(p, mapping)
 
     for t in doc.tables:
         replace_in_table(t, mapping)
 
+    # колонтитулы всех типов
     for section in doc.sections:
-        header = section.header
-        footer = section.footer
+        headers = [
+            section.header,
+            section.first_page_header,
+            section.even_page_header,
+        ]
+        footers = [
+            section.footer,
+            section.first_page_footer,
+            section.even_page_footer,
+        ]
 
-        for p in header.paragraphs:
-            replace_in_paragraph(p, mapping)
-        for t in header.tables:
-            replace_in_table(t, mapping)
+        for hdr in headers:
+            for p in hdr.paragraphs:
+                replace_in_paragraph(p, mapping)
+            for t in hdr.tables:
+                replace_in_table(t, mapping)
 
-        for p in footer.paragraphs:
-            replace_in_paragraph(p, mapping)
-        for t in footer.tables:
-            replace_in_table(t, mapping)
+            replace_placeholders_in_element_xml(hdr._element, mapping)
+
+        for ftr in footers:
+            for p in ftr.paragraphs:
+                replace_in_paragraph(p, mapping)
+            for t in ftr.tables:
+                replace_in_table(t, mapping)
+            replace_placeholders_in_element_xml(ftr._element, mapping)
+
+def replace_placeholders_in_element_xml(element, mapping: dict):
+    # без namespace-префиксов, чтобы работало всегда
+    for p in element.xpath(".//*[local-name()='p']"):
+        ts = p.xpath(".//*[local-name()='t']")
+        if not ts:
+            continue
+
+        full_text = "".join((t.text or "") for t in ts)
+        if not any(k in full_text for k in mapping.keys()):
+            continue
+
+        new_text = full_text
+        for key, val in mapping.items():
+            new_text = new_text.replace(key, "" if val is None else str(val))
+
+        if new_text == full_text:
+            continue
+
+        ts[0].text = new_text
+        for t in ts[1:]:
+            t.text = ""
+# ==================================================
+# TEXT NORMALIZATION
+# ==================================================
+def _normalize_dash(text: str) -> str:
+    """
+    1) если введено ровно "-" -> "—"
+    2) если есть " - " -> " — " (для красивых названий)
+    """
+    if text is None:
+        return ""
+    s = str(text).strip()
+    if s == "-":
+        return "—"
+    # заменяем только дефис-разделитель с пробелами
+    return str(text).replace(" - ", " — ")
+
+def _keep_highlight_if_empty(s: str) -> str:
+    # NBSP чтобы подсветка маркером (заливка) визуально оставалась
+    return s if (s is not None and str(s).strip() != "") else "\u00A0"
+
+def _yes_no_to_10(value: str) -> str:
+    v = (value or "").strip().lower()
+    if v == "да":
+        return "1"
+    if v == "нет":
+        return "0"
+    return ""
+
+def _flow_dir_to_sign(value: str) -> str:
+    v = (value or "").strip().lower()
+    if v == "слева направо":
+        return "1"
+    if v == "справа налево":
+        return "-1"
+    return ""
+
+def _fmt_float(value: str, decimals: int) -> str:
+    s = (value or "").strip().replace(",", ".")
+    if s == "":
+        return "\u00A0"
+    try:
+        x = float(s)
+    except ValueError:
+        return _keep_highlight_if_empty(value)
+    return f"{x:.{decimals}f}".replace(".", ",")
+
+def _calc_km_code(km_value: str) -> str:
+    """
+    Из '9+700'  -> '010'
+    Из '23,245' -> '024'
+    Из '325+000' -> '326'
+    Из '1251+...' -> '1252' для кода сооружения
+    """
+    if not km_value:
+        return ""
+
+    s = str(km_value).strip()
+
+    for sep in ("+", ","):
+        if sep in s:
+            left = s.split(sep, 1)[0].strip()
+            try:
+                km = int(left) + 1
+            except ValueError:
+                return ""
+
+            return f"{km:03d}" if km < 1000 else str(km)
+
+    return ""
 
 
+def prepare_bridge_mapping(bridge: dict) -> dict:
+    """
+    Делает mapping для плейсхолдеров {{bridge.*}} с нужными преобразованиями.
+    """
+    b = bridge or {}
+
+    mapping = {}
+    for k in BRIDGE_KEYS:
+        v = b.get(k, "")
+        # базовая строка
+        sv = "" if v is None else str(v)
+
+        # дефис/тире (применяем для всех — безопасно)
+        sv = _normalize_dash(sv)
+
+        if k in FLOAT_1:
+            sv = _fmt_float(sv, 1)
+        elif k in FLOAT_2:
+            sv = _fmt_float(sv, 2)
+
+        # точечные конвертации
+        if k in ("marking", "transition_slabs"):
+            sv = _yes_no_to_10(sv)
+
+        if k == "flow_direction":
+            sv = _flow_dir_to_sign(sv)
+
+        mapping[f"{{{{bridge.{k}}}}}"] = _keep_highlight_if_empty(sv)
+        km_code = _calc_km_code(b.get("km", ""))
+        mapping["{{bridge.km_code}}"] = _keep_highlight_if_empty(km_code)
+
+    return mapping
+
+def prepare_span_mapping(span: dict) -> dict:
+    s = span or {}
+    mapping = {}
+
+    for k, v in s.items():
+        if k == "uid":
+            continue
+        sv = "" if v is None else str(v)
+        sv = _normalize_dash(sv)
+
+
+        if k in FLOAT_1:
+            sv = _fmt_float(sv, 1)
+        elif k in FLOAT_2:
+            sv = _fmt_float(sv, 2)
+
+        mapping[f"{{{{span.{k}}}}}"] = _keep_highlight_if_empty(sv)
+
+    return mapping
+
+
+def prepare_pier_mapping(pier: dict) -> dict:
+    p = pier or {}
+    mapping = {}
+
+    for k, v in p.items():
+        if k == "uid":
+            continue
+        sv = "" if v is None else str(v)
+        sv = _normalize_dash(sv)
+
+        if k in FLOAT_1:
+            sv = _fmt_float(sv, 1)
+        elif k in FLOAT_2:
+            sv = _fmt_float(sv, 2)
+
+        mapping[f"{{{{pier.{k}}}}}"] = _keep_highlight_if_empty(sv)
+
+    return mapping
 
 # ==================================================
 # DEFECTS TABLE (Форма 5)
@@ -407,10 +604,7 @@ def export_to_docx(file_path: str, project: dict):
 
     # ---------- Форма 1 (Основные сведения bridge.*) ----------
     bridge = project.get("bridge", {})
-    mapping = {
-        f"{{{{bridge.{k}}}}}": v
-        for k, v in bridge.items()
-    }
+    mapping = prepare_bridge_mapping(bridge)
     replace_placeholders_everywhere(doc, mapping)
 
     # ---------- Форма 2 (Пролётные строения spans.*) ----------
@@ -419,7 +613,8 @@ def export_to_docx(file_path: str, project: dict):
         start_marker="{{SPAN_FORM}}",
         end_marker="{{PIER_FORM}}",
         items=project.get("spans", []),
-        prefix="span"
+        prefix="span",
+        mapping_builder=prepare_span_mapping
     )
 
 # ---------- Форма 3 (Опоры piers.*) ----------
@@ -428,7 +623,8 @@ def export_to_docx(file_path: str, project: dict):
         start_marker="{{PIER_FORM}}",
         end_marker="{{FORM4_START}}",
         items=project.get("piers", []),
-        prefix="pier"
+        prefix="pier",
+        mapping_builder=prepare_pier_mapping
     )
     # ---------- Форма 4  ----------
     replace_placeholders_everywhere(doc, {"{{FORM4_START}}": ""})
