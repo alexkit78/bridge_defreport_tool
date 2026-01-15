@@ -13,7 +13,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from copy import deepcopy
 from docx.oxml.ns import qn
 
-from constants import TEMPLATE_PATH
+from constants import TEMPLATE_PATH, REPORT_TEMPLATE_PATH
 from dictionary import BRIDGE_KEYS
 
 FLOAT_1 = {"hydro_B", "hydro_H", "pier_height"}
@@ -589,7 +589,7 @@ def fill_defects_table(doc: Document, defects: list):
 
 
 # ==================================================
-# MAIN EXPORT
+# MAIN EXPORT (BRIDGE PASSPORT)
 # ==================================================
 
 def export_to_docx(file_path: str, project: dict):
@@ -630,6 +630,83 @@ def export_to_docx(file_path: str, project: dict):
     replace_placeholders_everywhere(doc, {"{{FORM4_START}}": ""})
     
     # ---------- Форма 5 (дефекты defects.*) ----------
+    fill_defects_table(doc, project.get("defects", []))
+
+    doc.save(file_path)
+
+# ==================================================
+# REPORT EXPORT (TECHNICAL REPORT)
+# ==================================================
+
+def prepare_indexed_list_mapping(items: list, prefix: str) -> dict:
+    """
+    Делает mapping для плейсхолдеров вида:
+      {{span0.key}}, {{span1.key}}, ...
+      {{pier0.key}}, {{pier1.key}}, ...
+
+    - items: список словарей (project["spans"] или project["piers"])
+    - prefix: "span" или "pier"
+    """
+    mapping = {}
+
+    if not items:
+        return mapping
+
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+
+        for k, v in item.items():
+            if k == "uid":
+                continue
+
+            sv = "" if v is None else str(v)
+            sv = _normalize_dash(sv)
+
+            # форматирование чисел так же, как в паспорте
+            if k in FLOAT_1:
+                sv = _fmt_float(sv, 1)
+            elif k in FLOAT_2:
+                sv = _fmt_float(sv, 2)
+
+            mapping[f"{{{{{prefix}{idx}.{k}}}}}"] = _keep_highlight_if_empty(sv)
+
+    return mapping
+
+
+def export_report_to_docx(file_path: str, project: dict):
+    """
+    Экспорт ТЕХНИЧЕСКОГО ОТЧЁТА в DOCX по шаблону inspection_report_template.docx.
+
+    Использует те же данные:
+    - bridge.* (Форма 1)
+    - span0.*, span1.*, ... (по списку project["spans"])
+    - pier0.*, pier1.*, ... (по списку project["piers"])
+    - defects (таблица после {{DEFECTS_TABLE}})
+    """
+    if not isinstance(project, dict):
+        raise TypeError("export_report_to_docx ожидает project=dict")
+
+    # копируем шаблон отчёта
+    shutil.copyfile(REPORT_TEMPLATE_PATH, file_path)
+    doc = Document(file_path)
+
+    # --- bridge.* ---
+    bridge = project.get("bridge", {})
+    replace_placeholders_everywhere(doc, prepare_bridge_mapping(bridge))
+
+    # --- span0/span1/... ---
+    spans = project.get("spans", [])
+    replace_placeholders_everywhere(doc, prepare_indexed_list_mapping(spans, "span"))
+
+    # --- pier0/pier1/... ---
+    piers = project.get("piers", [])
+    replace_placeholders_everywhere(doc, prepare_indexed_list_mapping(piers, "pier"))
+
+    # --- убрать маркер фото, пока не поддерживаем ---
+    remove_marker_everywhere(doc, "{{PHOTO_COVER}}")
+
+    # --- таблица дефектов ---
     fill_defects_table(doc, project.get("defects", []))
 
     doc.save(file_path)

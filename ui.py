@@ -5,7 +5,7 @@ from tkinter import ttk, messagebox, filedialog, Menu
 import ctypes
 
 from database import Database
-from export import export_to_docx
+from export import export_to_docx, export_report_to_docx
 from utils import generate_uid
 from project_storage import save_json, load_json
 from project_model import make_empty_project
@@ -61,7 +61,8 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
                               command=self.new_project)
         file_menu.add_command(label="Открыть...", command=self.load_project)
         file_menu.add_separator()
-        file_menu.add_command(label="Сохранить...", command=self.save_project)
+        file_menu.add_command(label="Сохранить паспорт...", command=self.save_project)
+        file_menu.add_command(label="Сохранить отчёт...", command=self.save_report)
         file_menu.add_separator()
         file_menu.add_command(label="Выход", command=self.root.quit)
         
@@ -97,6 +98,30 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось сохранить файл:\n{e}")
             return False
+        
+    def save_report(self):
+        is_empty = (not self.project["bridge"]) and (not self.project["defects"]) and (not self.project["spans"]) and (not self.project["piers"])
+        if is_empty:
+            messagebox.showwarning("Нет данных", "Проект пустой — нечего сохранять.")
+            return False
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".docx",
+            filetypes=[("Word document", "*.docx")]
+        )
+        if not file_path:
+            return False
+
+        try:
+            export_report_to_docx(file_path, self.project)
+            self.is_dirty = False
+            self.status_label.config(text=f"Отчёт сохранён: {file_path}")
+            self.root.after(2000, lambda: self.status_label.config(text=""))
+            return True
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить отчёт:\n{e}")
+            return False
+
 
     def load_project(self):
         file_path = filedialog.askopenfilename(
