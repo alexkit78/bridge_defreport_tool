@@ -6,4 +6,11 @@
 
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+
+# VS Code
+.vscode/
+
+# Virtual environment
+.venv/

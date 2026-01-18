@@ -12,3 +12,4 @@ def resource_path(relative_path):
 
 DB_PATH = resource_path("bridge_defects.db")
 TEMPLATE_PATH = resource_path("report_template.docx")
+REPORT_TEMPLATE_PATH = resource_path("inspection_report_template.docx")
