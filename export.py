@@ -364,9 +364,9 @@ def _normalize_dash(text: str) -> str:
         return ""
     s = str(text).strip()
     if s == "-":
-        return "—"
+        return "–"
     # заменяем только дефис-разделитель с пробелами
-    return str(text).replace(" - ", " — ")
+    return str(text).replace(" - ", " – ")
 
 def _keep_highlight_if_empty(s: str) -> str:
     # NBSP чтобы подсветка маркером (заливка) визуально оставалась

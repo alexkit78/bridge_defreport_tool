@@ -6,6 +6,17 @@ from dictionary import (
     SPAN_SYSTEM, SPAN_TYPE, DECK_STRUCTURE, MATERIAL, JOINTS_TYPE,
     BEARINGS, EXPANSION_JOINTS, TRANSVERSE_CONN, PAVEMENT
 )
+# Какие поля пролёта копируем с Формы 1 (Общие сведения)
+COPY_FROM_FORM1 = {
+    "span_width_B": "width_B",
+    "span_width_G": "width_G",
+    "span_width_C1": "width_C1",
+    "span_width_C2": "width_C2",
+    "span_width_T1": "width_T1",
+    "span_width_T2": "width_T2",
+    "span_expansion_joints": "expansion_joints",
+    "pavement_material": "pavement_bridge",
+}
 
 class SpansTabMixin:
     def build_tab_spans(self):
@@ -151,29 +162,69 @@ class SpansTabMixin:
         def add_row(parent, row, label, key, spec):
             ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=6, pady=4)
             var = bind_var(key)
+            # Если для этого поля нужна кнопка "с Формы 1" — рисуем поле + кнопку в одном контейнере
+            need_copy_btn = key in COPY_FROM_FORM1
+            if need_copy_btn:
+                container = ttk.Frame(parent)
+                container.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
+                container.grid_columnconfigure(0, weight=1)
 
-            if spec == "entry":
-                e = ttk.Entry(parent, textvariable=var)
-                e.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
-                return e
+                def copy_from_form1():
+                    src_key = COPY_FROM_FORM1.get(key)
+                    val = self.project.get("bridge", {}).get(src_key, "")
+                    var.set("" if val is None else str(val))
+
+                btn = ttk.Button(container, text="с Формы 1", command=copy_from_form1)
+            else:
+                container = None
+                btn = None
+
+                if spec == "entry":
+                    if container is not None:
+                        e = ttk.Entry(container, textvariable=var)
+                        e.grid(row=0, column=0, sticky="ew")
+                        btn.grid(row=0, column=1, sticky="e", padx=(8, 0))
+                        return e
+                    else:
+                        e = ttk.Entry(parent, textvariable=var)
+                        e.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
+                        return e
 
             # spec = ("combo", values, editable)
             if isinstance(spec, tuple) and len(spec) >= 2 and spec[0] == "combo":
                 values = spec[1]
                 editable = bool(spec[2]) if len(spec) >= 3 else False
-                cb = ttk.Combobox(
-                    parent,
-                    textvariable=var,
-                    values=values,
-                    state=("normal" if editable else "readonly")
-                )
-                cb.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
-                return cb
+
+                if container is not None:
+                    cb = ttk.Combobox(
+                        container,
+                        textvariable=var,
+                        values=values,
+                        state=("normal" if editable else "readonly")
+                    )
+                    cb.grid(row=0, column=0, sticky="ew")
+                    btn.grid(row=0, column=1, sticky="e", padx=(8, 0))
+                    return cb
+                else:
+                    cb = ttk.Combobox(
+                        parent,
+                        textvariable=var,
+                        values=values,
+                        state=("normal" if editable else "readonly")
+                    )
+                    cb.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
+                    return cb
 
             # fallback
-            e = ttk.Entry(parent, textvariable=var)
-            e.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
-            return e
+            if container is not None:
+                e = ttk.Entry(container, textvariable=var)
+                e.grid(row=0, column=0, sticky="ew")
+                btn.grid(row=0, column=1, sticky="e", padx=(8, 0))
+                return e
+            else:
+                e = ttk.Entry(parent, textvariable=var)
+                e.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
+                return e
 
         fields = [
             ("Номера пролётных строений", "title", "entry"),
