@@ -18,7 +18,7 @@ class Database:
         """Возвращает дефекты для конкретного раздела"""
         self.cursor.execute(
             "SELECT num_ODM, name, option, safetyClass, durabilityClass, "
-            "repairabilityClass, loadCapacity, localizationODM "
+            "repairabilityClass, loadCapacity, localizationODM, units "
             "FROM defect_types WHERE placement = ?",
             (placement,)
         )

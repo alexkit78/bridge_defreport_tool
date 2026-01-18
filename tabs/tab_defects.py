@@ -58,7 +58,7 @@ class DefectsTabMixin:
                                                               sticky="w",
                                                               padx=6, pady=2)
         cat_frame = ttk.Frame(frame)
-        cat_frame.grid(row=11, column=0, columnspan=2, sticky="w")
+        cat_frame.grid(row=11, column=0, columnspan=2, sticky="ew")
 
         self.safety_entry = ttk.Entry(cat_frame, width=5)
         self.durability_entry = ttk.Entry(cat_frame, width=5)
@@ -69,6 +69,19 @@ class DefectsTabMixin:
         self.durability_entry.pack(side="left", padx=5)
         self.repair_entry.pack(side="left", padx=5)
         self.load_entry.pack(side="left", padx=5)
+
+        # --- Количество/объём, прижатое к правому краю ---
+        qty_right_frame = ttk.Frame(cat_frame)
+        qty_right_frame.pack(side="right", padx=(10, 0))
+
+        ttk.Label(qty_right_frame, text="Кол-во:").pack(side="left", padx=(0, 5))
+
+        self.qty_entry = ttk.Entry(qty_right_frame, width=12)
+        self.qty_entry.pack(side="left", padx=5)
+
+        self.unit_label = ttk.Label(qty_right_frame, text="Ед.изм.: —")
+        self.unit_label.pack(side="left", padx=(10, 0))
+
 
         ttk.Label(frame, text="Мероприятия по устранению дефекта:").grid(
             row=12, column=0, sticky="w", padx=6, pady=2)
@@ -219,8 +232,9 @@ class DefectsTabMixin:
         self.defect_options_by_numodm.clear()
         self.defect_numodm_map.clear()
         self.defect_categories_by_option.clear()
+        self.defect_unit_by_option = {}
 
-        for num_odm, name, option, s, d, r, l, localization in rows:
+        for num_odm, name, option, s, d, r, l, localization, units in rows:
             key = (name, localization or "")
             self.defect_numodm_map[key] = (
             num_odm, placement, localization or "")
@@ -232,6 +246,7 @@ class DefectsTabMixin:
                     self.defect_options_by_numodm[num_odm].append(option)
 
             self.defect_categories_by_option[(name, option)] = (s, d, r, l)
+            self.defect_unit_by_option[(name, option)] = units or ""
 
         # Combobox с отображением локализации
         self.defect_cb["values"] = sorted(
@@ -317,6 +332,16 @@ class DefectsTabMixin:
             self.load_entry.delete(0, tk.END)
             self.load_entry.insert(0, l)
 
+            unit = ""
+            try:
+                unit = self.defect_unit_by_option.get((defect_name, option), "") or ""
+            except Exception:
+                unit = ""
+
+            self.unit_label.config(text=f"Ед.изм.: {unit if unit else '—'}")
+
+            self.qty_entry.delete(0, tk.END)
+
     def update_status_bar(self):
         total = len(self.project["defects"])
         self.count_label.config(text=f"Всего дефектов: {total}")
@@ -325,6 +350,14 @@ class DefectsTabMixin:
         location = self.location_entry.get()
         selected_text = self.defect_cb.get()
         option = self.option_cb.get()
+        qty = self.qty_entry.get().strip() if hasattr(self, "qty_entry") else ""
+        # unit берём из подписи "Ед.изм.: ..."
+        unit_text = ""
+        if hasattr(self, "unit_label"):
+            unit_text = self.unit_label.cget("text")
+            unit_text = unit_text.replace("Ед.изм.:", "").strip()
+            if unit_text == "—":
+                unit_text = ""
         safety = self.safety_entry.get()
         durability = self.durability_entry.get()
         repairability = self.repair_entry.get()
@@ -343,12 +376,23 @@ class DefectsTabMixin:
             name = selected_text
 
         uid = self._generate_uid()
+
+        option_full = option
+        if qty:
+            # добавляем значение с новой строки
+            if unit_text:
+                option_full = f"{option_full}\n= {qty} {unit_text}".strip()
+            else:
+                option_full = f"{option_full}\n= {qty}".strip()
+
         rec = {
             'uid': uid,
             'placement': placement,
             'location': location,
             'name': name,
-            'option': option,
+            'option': option_full,
+            'qty': qty,
+            'unit': unit_text,
             'safety': safety,
             'durability': durability,
             'repairability': repairability,
@@ -367,13 +411,14 @@ class DefectsTabMixin:
         except ValueError:
             pass
 
-        self.table.insert("", "end", iid=uid, values=(placement, location, name, option, ", ".join(cats), action_text))
+        self.table.insert("", "end", iid=uid, values=(placement, location, name, option_full, ", ".join(cats), action_text))
 
         self.status_label.config(text="Строка добавлена в отчёт")
         self.count_label.config(text=f"Всего дефектов: "
                                      f"{len(self.project['defects'])}")
         self.root.after(2000, lambda: self.status_label.config(text=""))
         self.action_entry.delete(0, tk.END)
+        self.qty_entry.delete(0, tk.END)
         self.is_dirty = True
 
     def start_cell_edit(self, event):
