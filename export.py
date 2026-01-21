@@ -456,6 +456,44 @@ def prepare_bridge_mapping(bridge: dict) -> dict:
 
     return mapping
 
+def prepare_bridge_mapping_report(bridge: dict) -> dict:
+    """
+    Mapping для ТЕХНИЧЕСКОГО ОТЧЁТА.
+    Отличие от паспорта:
+    - flow_direction вставляется ТЕКСТОМ, а не числом
+    """
+    b = bridge or {}
+    mapping = {}
+
+    for k in BRIDGE_KEYS:
+        v = b.get(k, "")
+        sv = "" if v is None else str(v)
+
+        # тире / дефисы
+        sv = _normalize_dash(sv)
+
+        # формат чисел
+        if k in FLOAT_1:
+            sv = _fmt_float(sv, 1)
+        elif k in FLOAT_2:
+            sv = _fmt_float(sv, 2)
+
+        # да/нет → 1/0 (оставляем, это в отчёте тоже ок)
+        if k in ("marking", "transition_slabs"):
+            sv = _yes_no_to_10(sv)
+
+        # !!! ВАЖНО !!!
+        # flow_direction НЕ преобразуем в знак
+        # оставляем текст: "слева направо", "справа налево"
+
+        mapping[f"{{{{bridge.{k}}}}}"] = _keep_highlight_if_empty(sv)
+
+    # km_code тоже нужен
+    km_code = _calc_km_code(b.get("km", ""))
+    mapping["{{bridge.km_code}}"] = _keep_highlight_if_empty(km_code)
+
+    return mapping
+
 def prepare_span_mapping(span: dict) -> dict:
     s = span or {}
     mapping = {}
@@ -693,7 +731,7 @@ def export_report_to_docx(file_path: str, project: dict):
 
     # --- bridge.* ---
     bridge = project.get("bridge", {})
-    replace_placeholders_everywhere(doc, prepare_bridge_mapping(bridge))
+    replace_placeholders_everywhere(doc, prepare_bridge_mapping_report(bridge))
 
     # --- span0/span1/... ---
     spans = project.get("spans", [])
