@@ -157,12 +157,6 @@ class DefectsTabMixin:
                                                             "0", anchor="e")
         self.count_label.pack(side="right", padx=10, pady=0)
 
-        self.root.bind_class("Entry", "<Control-a>",
-                             lambda e: e.widget.select_range(0, tk.END))
-        self.root.bind_class("Entry", "<Command-a>",
-                             lambda e: e.widget.select_range(0, tk.END))
-        self.root.bind_class("Entry", "<Control-A>",
-                             lambda e: e.widget.select_range(0, tk.END))
 
         # Вызов стандартного меню для Entry / Text / Combobox
         self.root.bind_class("Entry",
@@ -177,30 +171,10 @@ class DefectsTabMixin:
         self.root.bind_class("TCombobox",
                              "<Button-3>" if sys.platform != 'darwin' else "<Button-2>",
                              self._show_entry_menu)
+        
+        for cls in ("Entry", "TEntry", "Text"):
+            self.root.bind_class(cls, "<Control-KeyPress>", self._ctrl_hotkeys_any_layout)
 
-        # Горячие клавиши в любой раскладке
-        self.root.bind_all("<Control-KeyPress>", self._global_shortcuts)
-
-    def _global_shortcuts(self, event):
-        key = event.keysym.lower()
-        if key in {"c", "v", "x"}:
-            return
-
-        action_map = {
-            "cyrillic_es": "<<Copy>>",
-            "cyrillic_em": "<<Paste>>",
-            "cyrillic_che": "<<Cut>>",
-        }
-        action = action_map.get(key)
-        if not action:
-            return
-
-        widget = self.root.focus_get()
-        try:
-            widget.event_generate(action)
-        except tk.TclError:
-            return
-        return "break"
 
     def _show_entry_menu(self, event):
         widget = event.widget
@@ -221,6 +195,53 @@ class DefectsTabMixin:
     def _on_mousewheel_mac(self, event):
         # MacOS: event.delta небольшое значение
         self.table.yview_scroll(int(-1 * event.delta), 'units')
+
+    def _ctrl_hotkeys_any_layout(self, event):
+        """
+        Универсальные Ctrl+C/V/X/A для любой раскладки.
+        Работает для Entry / Text / ttk.Entry (TEntry).
+        """
+        # Это управляющие коды, они одинаковы в любой раскладке:
+        # Ctrl+A = \x01, Ctrl+C=\x03, Ctrl+V=\x16, Ctrl+X=\x18
+        ch = event.char
+
+        w = event.widget
+
+        if ch == "\x01":  # Ctrl+A
+            # выделить всё (Entry/Text)
+            try:
+                w.select_range(0, tk.END)
+                w.icursor(tk.END)
+            except Exception:
+                try:
+                    w.tag_add("sel", "1.0", "end-1c")  # Text
+                except Exception:
+                    pass
+            return "break"
+
+        if ch == "\x03":  # Ctrl+C
+            try:
+                w.event_generate("<<Copy>>")
+            except tk.TclError:
+                pass
+            return "break"
+
+        if ch == "\x16":  # Ctrl+V
+            try:
+                w.event_generate("<<Paste>>")
+            except tk.TclError:
+                pass
+            return "break"
+
+        if ch == "\x18":  # Ctrl+X
+            try:
+                w.event_generate("<<Cut>>")
+            except tk.TclError:
+                pass
+            return "break"
+
+        # Для остальных Ctrl+клавиш ничего не делаем
+        return
 
     def load_placements(self):
         self.placement_cb['values'] = self.db.get_placements()
@@ -525,7 +546,8 @@ class DefectsTabMixin:
 
         entry.bind("<Button-3>",
                    lambda e: menu.tk_popup(e.x_root, e.y_root))  # только ПКМ
-
+        
+    
         def save_edit(event=None):
             new_value = entry.get()
             values = list(self.table.item(row_id, 'values'))
