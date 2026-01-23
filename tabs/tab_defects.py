@@ -58,7 +58,7 @@ class DefectsTabMixin:
                                                               sticky="w",
                                                               padx=6, pady=2)
         cat_frame = ttk.Frame(frame)
-        cat_frame.grid(row=11, column=0, columnspan=2, sticky="w")
+        cat_frame.grid(row=11, column=0, columnspan=2, sticky="ew")
 
         self.safety_entry = ttk.Entry(cat_frame, width=5)
         self.durability_entry = ttk.Entry(cat_frame, width=5)
@@ -69,6 +69,22 @@ class DefectsTabMixin:
         self.durability_entry.pack(side="left", padx=5)
         self.repair_entry.pack(side="left", padx=5)
         self.load_entry.pack(side="left", padx=5)
+
+        # --- Количество/объём, прижатое к правому краю ---
+        qty_right_frame = ttk.Frame(cat_frame)
+        qty_right_frame.pack(side="right", padx=(10, 0))
+
+        ttk.Label(qty_right_frame, text="Кол-во:").pack(side="left", padx=(0, 5))
+
+        self.qty_entry = ttk.Entry(qty_right_frame, width=12)
+        self.qty_entry.pack(side="left", padx=5)
+
+        self.unit_label = ttk.Label(qty_right_frame, text="Ед.изм.: —")
+        self.unit_label.pack(side="left", padx=(10, 0))
+        self.calc_btn = ttk.Button(qty_right_frame, text="Рассчитать", command=self.calculate_qty)
+        self.calc_btn.pack(side="left", padx=(10, 0))
+        self.calc_btn.config(state="disabled")
+
 
         ttk.Label(frame, text="Мероприятия по устранению дефекта:").grid(
             row=12, column=0, sticky="w", padx=6, pady=2)
@@ -141,12 +157,6 @@ class DefectsTabMixin:
                                                             "0", anchor="e")
         self.count_label.pack(side="right", padx=10, pady=0)
 
-        self.root.bind_class("Entry", "<Control-a>",
-                             lambda e: e.widget.select_range(0, tk.END))
-        self.root.bind_class("Entry", "<Command-a>",
-                             lambda e: e.widget.select_range(0, tk.END))
-        self.root.bind_class("Entry", "<Control-A>",
-                             lambda e: e.widget.select_range(0, tk.END))
 
         # Вызов стандартного меню для Entry / Text / Combobox
         self.root.bind_class("Entry",
@@ -161,28 +171,12 @@ class DefectsTabMixin:
         self.root.bind_class("TCombobox",
                              "<Button-3>" if sys.platform != 'darwin' else "<Button-2>",
                              self._show_entry_menu)
+        
+        for cls in ("Entry", "TEntry", "Text", "TCombobox"):
+            self.root.bind_class(cls, "<Control-KeyPress>", self._ctrl_hotkeys_any_layout)
+            self.root.bind_class(cls, "<Command-KeyPress>", self._ctrl_hotkeys_any_layout)
 
-        # Горячие клавиши в любой раскладке
-        self.root.bind_all("<Control-KeyPress>", self._global_shortcuts)
 
-    def _global_shortcuts(self, event):
-        key = event.keysym.lower()
-        widget = self.root.focus_get()
-        if key == 'c':
-            try:
-                widget.event_generate("<<Copy>>")
-            except:
-                pass
-        elif key == 'v':
-            try:
-                widget.event_generate("<<Paste>>")
-            except:
-                pass
-        elif key == 'x':
-            try:
-                widget.event_generate("<<Cut>>")
-            except:
-                pass
 
     def _show_entry_menu(self, event):
         widget = event.widget
@@ -204,6 +198,80 @@ class DefectsTabMixin:
         # MacOS: event.delta небольшое значение
         self.table.yview_scroll(int(-1 * event.delta), 'units')
 
+    def _ctrl_hotkeys_any_layout(self, event):
+        """
+        Универсальные Ctrl/Cmd + C/V/X/A для любой раскладки.
+        Работает для Entry / Text / ttk.Entry (TEntry) / ttk.Combobox (TCombobox).
+        """
+        # Это управляющие коды, они одинаковы в любой раскладке:
+        # Ctrl+A = \x01, Ctrl+C=\x03, Ctrl+V=\x16, Ctrl+X=\x18
+        control_actions = {
+            "\x01": "select_all",  # Ctrl/Cmd+A
+            "\x03": "copy",        # Ctrl/Cmd+C
+            "\x16": "paste",       # Ctrl/Cmd+V
+            "\x18": "cut",         # Ctrl/Cmd+X
+        }
+        layout_actions = {
+            "a": "select_all",
+            "c": "copy",
+            "v": "paste",
+            "x": "cut",
+            "ф": "select_all",
+            "с": "copy",
+            "м": "paste",
+            "ч": "cut",
+            "cyrillic_ef": "select_all",
+            "cyrillic_es": "copy",
+            "cyrillic_em": "paste",
+            "cyrillic_che": "cut",
+        }
+
+        ch = event.char or ""
+        key = ch.lower()
+        keysym = (event.keysym or "").lower()
+
+        action = control_actions.get(ch) or layout_actions.get(key) or layout_actions.get(keysym)
+        if not action:
+            return
+
+
+        w = event.widget
+
+        if action == "select_all":
+            # выделить всё (Entry/Text)
+            try:
+                w.select_range(0, tk.END)
+                w.icursor(tk.END)
+            except Exception:
+                try:
+                    w.tag_add("sel", "1.0", "end-1c")  # Text
+                except Exception:
+                    pass
+            return "break"
+
+        if action == "copy":
+            try:
+                w.event_generate("<<Copy>>")
+            except tk.TclError:
+                pass
+            return "break"
+
+        if action == "paste":
+            try:
+                w.event_generate("<<Paste>>")
+            except tk.TclError:
+                pass
+            return "break"
+
+        if action == "cut":
+            try:
+                w.event_generate("<<Cut>>")
+            except tk.TclError:
+                pass
+            return "break"
+
+        return
+
     def load_placements(self):
         self.placement_cb['values'] = self.db.get_placements()
 
@@ -219,8 +287,10 @@ class DefectsTabMixin:
         self.defect_options_by_numodm.clear()
         self.defect_numodm_map.clear()
         self.defect_categories_by_option.clear()
+        self.defect_unit_by_option = {}
+        self.defect_rule_by_option = {}
 
-        for num_odm, name, option, s, d, r, l, localization in rows:
+        for num_odm, name, option, s, d, r, l, localization, units, qty_rule in rows:
             key = (name, localization or "")
             self.defect_numodm_map[key] = (
             num_odm, placement, localization or "")
@@ -232,6 +302,8 @@ class DefectsTabMixin:
                     self.defect_options_by_numodm[num_odm].append(option)
 
             self.defect_categories_by_option[(name, option)] = (s, d, r, l)
+            self.defect_unit_by_option[(name, option)] = units or ""
+            self.defect_rule_by_option[(name, option)] = qty_rule or ""
 
         # Combobox с отображением локализации
         self.defect_cb["values"] = sorted(
@@ -317,14 +389,59 @@ class DefectsTabMixin:
             self.load_entry.delete(0, tk.END)
             self.load_entry.insert(0, l)
 
+            unit = ""
+            try:
+                unit = self.defect_unit_by_option.get((defect_name, option), "") or ""
+            except Exception:
+                unit = ""
+
+            self.unit_label.config(text=f"Ед.изм.: {unit if unit else '—'}")
+            rule = ""
+            try:
+                rule = self.defect_rule_by_option.get((defect_name, option), "") or ""
+            except Exception:
+                rule = ""
+
+            # сохраняем выбранное правило (чтобы calculate_qty знала, что считать)
+            self.current_qty_rule = rule
+
+            if hasattr(self, "calc_btn"):
+                if rule and rule.upper() != "MANUAL":
+                    self.calc_btn.config(state="normal")
+                else:
+                    self.calc_btn.config(state="disabled")
+
+            self.qty_entry.delete(0, tk.END)
+
     def update_status_bar(self):
         total = len(self.project["defects"])
         self.count_label.config(text=f"Всего дефектов: {total}")
+
+    def _qty_prefix_by_unit(self, unit: str) -> str:
+        u = (unit or "").lower().replace(" ", "")
+        if u in {"м2", "м²"}:
+            return "F"
+        if u == "м":
+            return "L"
+        if u in {"мм", "см"}:
+            return "T"
+        if u in {"шт", "pcs"}:
+            return "N"
+        return ""
+
     def add_entry(self):
         placement = self.placement_cb.get()
         location = self.location_entry.get()
         selected_text = self.defect_cb.get()
         option = self.option_cb.get()
+        qty = self.qty_entry.get().strip() if hasattr(self, "qty_entry") else ""
+        # unit берём из подписи "Ед.изм.: ..."
+        unit_text = ""
+        if hasattr(self, "unit_label"):
+            unit_text = self.unit_label.cget("text")
+            unit_text = unit_text.replace("Ед.изм.:", "").strip()
+            if unit_text == "—":
+                unit_text = ""
         safety = self.safety_entry.get()
         durability = self.durability_entry.get()
         repairability = self.repair_entry.get()
@@ -343,12 +460,25 @@ class DefectsTabMixin:
             name = selected_text
 
         uid = self._generate_uid()
+
+        option_full = option
+        if qty:
+            prefix = self._qty_prefix_by_unit(unit_text)
+            sign = f"{prefix} =" if prefix else "="
+            # добавляем значение с новой строки
+            if unit_text:
+                option_full = f"{option_full}\n{sign} {qty} {unit_text}".strip()
+            else:
+                option_full = f"{option_full}\n{sign} {qty}".strip()
+
         rec = {
             'uid': uid,
             'placement': placement,
             'location': location,
             'name': name,
-            'option': option,
+            'option': option_full,
+            'qty': qty,
+            'unit': unit_text,
             'safety': safety,
             'durability': durability,
             'repairability': repairability,
@@ -367,14 +497,16 @@ class DefectsTabMixin:
         except ValueError:
             pass
 
-        self.table.insert("", "end", iid=uid, values=(placement, location, name, option, ", ".join(cats), action_text))
+        self.table.insert("", "end", iid=uid, values=(placement, location, name, option_full, ", ".join(cats), action_text))
 
         self.status_label.config(text="Строка добавлена в отчёт")
         self.count_label.config(text=f"Всего дефектов: "
                                      f"{len(self.project['defects'])}")
         self.root.after(2000, lambda: self.status_label.config(text=""))
         self.action_entry.delete(0, tk.END)
-        self.is_dirty = True
+        self.qty_entry.delete(0, tk.END)
+        if not getattr(self, "is_loading", False):
+            self.is_dirty = True
 
     def start_cell_edit(self, event):
         # Редактируемые столбцы: 1=location, 2=name, 3=option, 5=action
@@ -407,8 +539,18 @@ class DefectsTabMixin:
         entry.bind("<Control-c>", lambda e: (self.root.clipboard_clear(),
                                              self.root.clipboard_append(
                                                  entry.selection_get())))
-        entry.bind("<Control-v>", lambda e: entry.insert(tk.INSERT,
-                                                         self.root.clipboard_get()))
+        def paste_clipboard(event=None):
+            try:
+                clipboard = self.root.clipboard_get()
+            except tk.TclError:
+                return "break"
+
+            if entry.selection_present():
+                entry.delete("sel.first", "sel.last")
+            entry.insert(tk.INSERT, clipboard)
+            return "break"
+
+        entry.bind("<Control-v>", paste_clipboard)
         entry.bind("<Control-x>", lambda e: (self.root.clipboard_clear(),
                                              self.root.clipboard_append(
                                                  entry.selection_get()),
@@ -433,7 +575,8 @@ class DefectsTabMixin:
 
         entry.bind("<Button-3>",
                    lambda e: menu.tk_popup(e.x_root, e.y_root))  # только ПКМ
-
+        
+    
         def save_edit(event=None):
             new_value = entry.get()
             values = list(self.table.item(row_id, 'values'))
@@ -454,7 +597,8 @@ class DefectsTabMixin:
                         rec['action'] = new_value
                     break
             self.update_status_bar()
-            self.is_dirty = True
+            if not getattr(self, "is_loading", False):
+                self.is_dirty = True
 
         def cancel_edit(event=None):
             entry.destroy()
@@ -484,4 +628,55 @@ class DefectsTabMixin:
                 'uid'] != iid]
             self.table.delete(iid)
         self.update_status_bar()
-        self.is_dirty = True
+        if not getattr(self, "is_loading", False):
+            self.is_dirty = True
+
+    def calculate_qty(self):
+        # Правила расчёта объёмов дефектов: см. docs/defects_qty_rules.txt
+        rule = getattr(self, "current_qty_rule", "") or ""
+        rule = rule.upper().strip()
+
+        bridge = self.project.get("bridge", {})
+
+        def _to_float(value: str):
+            s = (value or "").strip().replace(",", ".")
+            if s == "":
+                return None
+            try:
+                return float(s)
+            except ValueError:
+                return None
+
+        if rule == "DECK_AREA_G":
+            length = _to_float(bridge.get("length", ""))
+            width_g = _to_float(bridge.get("width_G", ""))
+            if length is None or width_g is None:
+                messagebox.showwarning(
+                    "Недостаточно данных",
+                    "Для расчёта нужно заполнить на Форме 1:\n"
+                    "• Длина сооружения\n"
+                    "• Ширина проезжей части Г"
+                )
+                return
+            area = length * width_g
+            self.qty_entry.delete(0, tk.END)
+            self.qty_entry.insert(0, f"{area:.2f}".replace(".", ","))
+
+        elif rule == "SIDEWALK_AREA_T":
+            length = _to_float(bridge.get("length", ""))
+            t1 = _to_float(bridge.get("width_T1", "")) or 0.0
+            t2 = _to_float(bridge.get("width_T2", "")) or 0.0
+            if length is None or (t1 + t2) == 0.0:
+                messagebox.showwarning(
+                    "Недостаточно данных",
+                    "Для расчёта нужно заполнить на Форме 1:\n"
+                    "• Длина сооружения\n"
+                    "• Ширина тротуаров T1 и/или T2"
+                )
+                return
+            area = length * (t1 + t2)
+            self.qty_entry.delete(0, tk.END)
+            self.qty_entry.insert(0, f"{area:.2f}".replace(".", ","))
+
+        else:
+            messagebox.showinfo("Расчёт", "Для этого дефекта расчёт не настроен.")

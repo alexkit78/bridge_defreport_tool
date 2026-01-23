@@ -18,6 +18,8 @@ from tabs.tab_defects import DefectsTabMixin
 class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
     def __init__(self, root):
         self.root = root
+        self.is_loading = True
+
         self.root.title("Оценка состояния мостового сооружения")
         self.build_menu()
 
@@ -43,12 +45,15 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
         self.notebook.add(self.tab_piers, text="Опоры")
         self.notebook.add(self.tab_defects, text="Дефекты")
 
+
         self.bridge_vars = {}  # ключ поля -> tk.StringVar
         self.span_forms = {}  # uid -> {"frame": Frame, "vars": {key: StringVar}}
         self.pier_forms = {} # uid -> {"frame": Frame, "vars": {key: StringVar}}
 
-        self.is_dirty = False
         self.build_ui()
+        self.is_loading = False
+        self.is_dirty = False
+        
 
     def _generate_uid(self):
         return generate_uid()
@@ -64,7 +69,7 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
         file_menu.add_command(label="Сохранить паспорт...", command=self.save_project)
         file_menu.add_command(label="Сохранить отчёт...", command=self.save_report)
         file_menu.add_separator()
-        file_menu.add_command(label="Выход", command=self.root.quit)
+        file_menu.add_command(label="Выход", command=self.on_close)
         
         menubar.add_cascade(label="Файл", menu=file_menu)
         self.root.config(menu=menubar)

@@ -253,6 +253,8 @@ def replace_in_paragraph(paragraph: Paragraph, mapping: dict):
     for key, val in mapping.items():
         new_text = new_text.replace(key, "" if val is None else str(val))
 
+    new_text = _format_units_for_docx(new_text)
+
     if new_text == full_text:
         return
 
@@ -368,6 +370,15 @@ def _normalize_dash(text: str) -> str:
     # заменяем только дефис-разделитель с пробелами
     return str(text).replace(" - ", " – ")
 
+def _format_units_for_docx(text: str) -> str:
+    if not text:
+        return text
+    return (
+        text
+        .replace("м2", "м²")
+        .replace("м3", "м³")
+    )
+
 def _keep_highlight_if_empty(s: str) -> str:
     # NBSP чтобы подсветка маркером (заливка) визуально оставалась
     return s if (s is not None and str(s).strip() != "") else "\u00A0"
@@ -453,6 +464,44 @@ def prepare_bridge_mapping(bridge: dict) -> dict:
         mapping[f"{{{{bridge.{k}}}}}"] = _keep_highlight_if_empty(sv)
         km_code = _calc_km_code(b.get("km", ""))
         mapping["{{bridge.km_code}}"] = _keep_highlight_if_empty(km_code)
+
+    return mapping
+
+def prepare_bridge_mapping_report(bridge: dict) -> dict:
+    """
+    Mapping для ТЕХНИЧЕСКОГО ОТЧЁТА.
+    Отличие от паспорта:
+    - flow_direction вставляется ТЕКСТОМ, а не числом
+    """
+    b = bridge or {}
+    mapping = {}
+
+    for k in BRIDGE_KEYS:
+        v = b.get(k, "")
+        sv = "" if v is None else str(v)
+
+        # тире / дефисы
+        sv = _normalize_dash(sv)
+
+        # формат чисел
+        if k in FLOAT_1:
+            sv = _fmt_float(sv, 1)
+        elif k in FLOAT_2:
+            sv = _fmt_float(sv, 2)
+
+        # да/нет → 1/0 (оставляем, это в отчёте тоже ок)
+        if k in ("marking", "transition_slabs"):
+            sv = _yes_no_to_10(sv)
+
+        # !!! ВАЖНО !!!
+        # flow_direction НЕ преобразуем в знак
+        # оставляем текст: "слева направо", "справа налево"
+
+        mapping[f"{{{{bridge.{k}}}}}"] = _keep_highlight_if_empty(sv)
+
+    # km_code тоже нужен
+    km_code = _calc_km_code(b.get("km", ""))
+    mapping["{{bridge.km_code}}"] = _keep_highlight_if_empty(km_code)
 
     return mapping
 
@@ -560,7 +609,7 @@ def fill_defects_table(doc: Document, defects: list):
             cells[0].text = str(counter)
             cells[1].text = rec.get("location", "")
             cells[2].text = rec.get("name", "")
-            cells[3].text = rec.get("option", "")
+            cells[3].text = _format_units_for_docx(rec.get("option", ""))
 
             cats = []
             if rec.get("safety"):
@@ -693,7 +742,7 @@ def export_report_to_docx(file_path: str, project: dict):
 
     # --- bridge.* ---
     bridge = project.get("bridge", {})
-    replace_placeholders_everywhere(doc, prepare_bridge_mapping(bridge))
+    replace_placeholders_everywhere(doc, prepare_bridge_mapping_report(bridge))
 
     # --- span0/span1/... ---
     spans = project.get("spans", [])

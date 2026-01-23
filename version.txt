@@ -31,12 +31,12 @@ VSVersionInfo(
         '041904e3',
         [StringStruct('CompanyName', ''),
         StringStruct('FileDescription', 'Оценка состояния мостовых сооружений'),
-        StringStruct('FileVersion', '1.5.0.0'),
+        StringStruct('FileVersion', '1.6.0.0'),
         StringStruct('InternalName', 'Bridge report tool'),
-        StringStruct('LegalCopyright', 'Чечеткин Александр © 2025'),
+        StringStruct('LegalCopyright', 'Чечеткин Александр © 2025-2026'),
         StringStruct('OriginalFilename', 'BridgeReport.exe'),
         StringStruct('ProductName', 'Оценка состояния мостовых сооружений'),
-        StringStruct('ProductVersion', '1.5.0.0')])
+        StringStruct('ProductVersion', '1.6.0.0')])
       ]), 
     VarFileInfo([VarStruct('Translation', [1049, 1251])])
   ]

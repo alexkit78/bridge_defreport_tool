@@ -103,7 +103,8 @@ class SpansTabMixin:
         }
 
         self.project["spans"].append(item)
-        self.is_dirty = True
+        if not getattr(self, "is_loading", False):
+            self.is_dirty = True
 
         self._create_span_tab_for_item(item)
         self.spans_notebook.select(self.span_forms[uid]["tab"])
@@ -129,7 +130,8 @@ class SpansTabMixin:
         self.project["spans"] = [
             x for x in self.project["spans"] if x.get("uid") != uid_to_delete
         ]
-        self.is_dirty = True
+        if not getattr(self, "is_loading", False):
+            self.is_dirty = True
         self.rebuild_span_tabs()
 
     def _create_span_tab_for_item(self, item: dict):
@@ -148,7 +150,8 @@ class SpansTabMixin:
 
             def on_change(*_):
                 item[key] = var.get()
-                self.is_dirty = True
+                if not getattr(self, "is_loading", False):
+                    self.is_dirty = True
                 if key == "title":
                     try:
                         tab_index = self.spans_notebook.index(tab)
