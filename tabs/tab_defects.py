@@ -172,8 +172,10 @@ class DefectsTabMixin:
                              "<Button-3>" if sys.platform != 'darwin' else "<Button-2>",
                              self._show_entry_menu)
         
-        for cls in ("Entry", "TEntry", "Text"):
+        for cls in ("Entry", "TEntry", "Text", "TCombobox"):
             self.root.bind_class(cls, "<Control-KeyPress>", self._ctrl_hotkeys_any_layout)
+            self.root.bind_class(cls, "<Command-KeyPress>", self._ctrl_hotkeys_any_layout)
+
 
 
     def _show_entry_menu(self, event):
@@ -198,16 +200,44 @@ class DefectsTabMixin:
 
     def _ctrl_hotkeys_any_layout(self, event):
         """
-        Универсальные Ctrl+C/V/X/A для любой раскладки.
-        Работает для Entry / Text / ttk.Entry (TEntry).
+        Универсальные Ctrl/Cmd + C/V/X/A для любой раскладки.
+        Работает для Entry / Text / ttk.Entry (TEntry) / ttk.Combobox (TCombobox).
         """
         # Это управляющие коды, они одинаковы в любой раскладке:
         # Ctrl+A = \x01, Ctrl+C=\x03, Ctrl+V=\x16, Ctrl+X=\x18
-        ch = event.char
+        control_actions = {
+            "\x01": "select_all",  # Ctrl/Cmd+A
+            "\x03": "copy",        # Ctrl/Cmd+C
+            "\x16": "paste",       # Ctrl/Cmd+V
+            "\x18": "cut",         # Ctrl/Cmd+X
+        }
+        layout_actions = {
+            "a": "select_all",
+            "c": "copy",
+            "v": "paste",
+            "x": "cut",
+            "ф": "select_all",
+            "с": "copy",
+            "м": "paste",
+            "ч": "cut",
+            "cyrillic_ef": "select_all",
+            "cyrillic_es": "copy",
+            "cyrillic_em": "paste",
+            "cyrillic_che": "cut",
+        }
+
+        ch = event.char or ""
+        key = ch.lower()
+        keysym = (event.keysym or "").lower()
+
+        action = control_actions.get(ch) or layout_actions.get(key) or layout_actions.get(keysym)
+        if not action:
+            return
+
 
         w = event.widget
 
-        if ch == "\x01":  # Ctrl+A
+        if action == "select_all":
             # выделить всё (Entry/Text)
             try:
                 w.select_range(0, tk.END)
@@ -219,28 +249,27 @@ class DefectsTabMixin:
                     pass
             return "break"
 
-        if ch == "\x03":  # Ctrl+C
+        if action == "copy":
             try:
                 w.event_generate("<<Copy>>")
             except tk.TclError:
                 pass
             return "break"
 
-        if ch == "\x16":  # Ctrl+V
+        if action == "paste":
             try:
                 w.event_generate("<<Paste>>")
             except tk.TclError:
                 pass
             return "break"
 
-        if ch == "\x18":  # Ctrl+X
+        if action == "cut":
             try:
                 w.event_generate("<<Cut>>")
             except tk.TclError:
                 pass
             return "break"
 
-        # Для остальных Ctrl+клавиш ничего не делаем
         return
 
     def load_placements(self):
@@ -603,6 +632,7 @@ class DefectsTabMixin:
             self.is_dirty = True
 
     def calculate_qty(self):
+        # Правила расчёта объёмов дефектов: см. docs/defects_qty_rules.txt
         rule = getattr(self, "current_qty_rule", "") or ""
         rule = rule.upper().strip()
 
