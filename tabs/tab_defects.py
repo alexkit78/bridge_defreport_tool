@@ -455,7 +455,8 @@ class DefectsTabMixin:
         self.root.after(2000, lambda: self.status_label.config(text=""))
         self.action_entry.delete(0, tk.END)
         self.qty_entry.delete(0, tk.END)
-        self.is_dirty = True
+        if not getattr(self, "is_loading", False):
+            self.is_dirty = True
 
     def start_cell_edit(self, event):
         # Редактируемые столбцы: 1=location, 2=name, 3=option, 5=action
@@ -545,7 +546,8 @@ class DefectsTabMixin:
                         rec['action'] = new_value
                     break
             self.update_status_bar()
-            self.is_dirty = True
+            if not getattr(self, "is_loading", False):
+                self.is_dirty = True
 
         def cancel_edit(event=None):
             entry.destroy()
@@ -575,7 +577,8 @@ class DefectsTabMixin:
                 'uid'] != iid]
             self.table.delete(iid)
         self.update_status_bar()
-        self.is_dirty = True
+        if not getattr(self, "is_loading", False):
+            self.is_dirty = True
 
     def calculate_qty(self):
         rule = getattr(self, "current_qty_rule", "") or ""

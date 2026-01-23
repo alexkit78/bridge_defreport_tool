@@ -87,7 +87,8 @@ class GeneralTabMixin:
 
             def on_change(*_):
                 self.project["bridge"][key] = var.get()
-                self.is_dirty = True
+                if not getattr(self, "is_loading", False):
+                    self.is_dirty = True
 
             var.trace_add("write", on_change)
             self.bridge_vars[key] = var

@@ -77,7 +77,8 @@ class PiersTabMixin:
         }
 
         self.project["piers"].append(item)
-        self.is_dirty = True
+        if not getattr(self, "is_loading", False):
+            self.is_dirty = True
 
         self._create_pier_tab_for_item(item)
         self.piers_notebook.select(self.pier_forms[uid]["tab"])
@@ -100,7 +101,8 @@ class PiersTabMixin:
             return
 
         self.project["piers"] = [x for x in self.project["piers"] if x.get("uid") != uid_to_delete]
-        self.is_dirty = True
+        if not getattr(self, "is_loading", False):
+            self.is_dirty = True
         self.rebuild_pier_tabs()
 
     def _create_pier_tab_for_item(self, item: dict):
@@ -118,7 +120,8 @@ class PiersTabMixin:
 
             def on_change(*_):
                 item[key] = var.get()
-                self.is_dirty = True
+                if not getattr(self, "is_loading", False):
+                    self.is_dirty = True
                 if key == "title":
                     try:
                         tab_index = self.piers_notebook.index(tab)
