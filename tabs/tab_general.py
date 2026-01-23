@@ -93,11 +93,49 @@ class GeneralTabMixin:
             self.bridge_vars[key] = var
             return var
 
+        def _parse_width_value(value: str):
+            value = value.strip().replace(",", ".")
+            if not value:
+                return None
+            try:
+                return float(value)
+            except ValueError:
+                return None
+
+        def _format_width_value(value: float) -> str:
+            text = f"{value:.3f}".rstrip("0").rstrip(".")
+            return text.replace(".", ",")
+
         def add_row(parent, row, label, key, spec):
             ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=6, pady=4)
             var = bind_var(key)
 
             if spec == "entry":
+                if key == "width_B":
+                    container = ttk.Frame(parent)
+                    container.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
+                    container.grid_columnconfigure(0, weight=1)
+
+                    def sum_widths():
+                        keys = ("width_G", "width_C1", "width_C2", "width_T1", "width_T2")
+                        values = [
+                            _parse_width_value(self.bridge_vars[k].get())
+                            for k in keys
+                            if k in self.bridge_vars
+                        ]
+                        values = [v for v in values if v is not None]
+                        if not values:
+                            var.set("")
+                            return
+                        total = sum(values)
+                        var.set(_format_width_value(total))
+
+                    e = ttk.Entry(container, textvariable=var)
+                    e.grid(row=0, column=0, sticky="ew")
+                    btn = ttk.Button(container, text="Сумма", command=sum_widths)
+                    btn.grid(row=0, column=1, sticky="e", padx=(8, 0))
+                    return e
+                
                 e = ttk.Entry(parent, textvariable=var)
                 e.grid(row=row, column=1, sticky="ew", padx=6, pady=4)
                 return e
