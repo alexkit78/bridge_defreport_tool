@@ -1,11 +1,11 @@
-# Bridge Defect Report Tool
+# Bridge Report Tool
 
-## Automated tool for generating bridge structure defect tables according to ODM 218.3.042-2014 in Microsoft Word format
+## Automated tool for generating passport with bridge structure defect tables according to ODM 218.3.042-2014 in Microsoft Word format and Bridge Inspection Report.
 
 **Key Features**
 * **Defect grouping:** Automatic grouping of records by structure sections (according to ODM classification)
 * **Record editing:** Editing entries during the table creating process
-* **Table generation:** Creation of structured reports in Word (.docx) format
+* **Documents generation:** Creation of structured reports in Word (.docx) format
 
 ## Installation
 
@@ -36,12 +36,12 @@
 _____________________________________________________
 
 
-## Инструмент для автоматического формирования таблицы дефектов мостовых сооружений по ОДМ 218.3.042-2014 в формате Microsoft Word
+## Инструмент для автоматического формирования Паспорта мостового сооружения с таблицей дефектов по ОДМ 218.3.042-2014, а также отчётов по обследованию мостового сооружения в формате Microsoft Word
 
 **Возможности**
 * Группировка дефектов: автоматическая группировка записей по разделам сооружения (в соответствии с классификацией в ОДМ)
 * Редактирование записей в процессе составления таблицы дефектов
-* Генерация таблицы: создание структурированного отчета в формате Word (.docx).
+* Формирование документов: создание структурированного паспорта и отчёта в формате Word (.docx) по введённым данным.
 
 ## Установка
 ### Клонирование репозитория:
