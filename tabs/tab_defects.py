@@ -180,22 +180,24 @@ class DefectsTabMixin:
 
     def _global_shortcuts(self, event):
         key = event.keysym.lower()
+        if key in {"c", "v", "x"}:
+            return
+
+        action_map = {
+            "cyrillic_es": "<<Copy>>",
+            "cyrillic_em": "<<Paste>>",
+            "cyrillic_che": "<<Cut>>",
+        }
+        action = action_map.get(key)
+        if not action:
+            return
+
         widget = self.root.focus_get()
-        if key == 'c':
-            try:
-                widget.event_generate("<<Copy>>")
-            except:
-                pass
-        elif key == 'v':
-            try:
-                widget.event_generate("<<Paste>>")
-            except:
-                pass
-        elif key == 'x':
-            try:
-                widget.event_generate("<<Cut>>")
-            except:
-                pass
+        try:
+            widget.event_generate(action)
+        except tk.TclError:
+            return
+        return "break"
 
     def _show_entry_menu(self, event):
         widget = event.widget
@@ -452,8 +454,18 @@ class DefectsTabMixin:
         entry.bind("<Control-c>", lambda e: (self.root.clipboard_clear(),
                                              self.root.clipboard_append(
                                                  entry.selection_get())))
-        entry.bind("<Control-v>", lambda e: entry.insert(tk.INSERT,
-                                                         self.root.clipboard_get()))
+        def paste_clipboard(event=None):
+            try:
+                clipboard = self.root.clipboard_get()
+            except tk.TclError:
+                return "break"
+
+            if entry.selection_present():
+                entry.delete("sel.first", "sel.last")
+            entry.insert(tk.INSERT, clipboard)
+            return "break"
+
+        entry.bind("<Control-v>", paste_clipboard)
         entry.bind("<Control-x>", lambda e: (self.root.clipboard_clear(),
                                              self.root.clipboard_append(
                                                  entry.selection_get()),
