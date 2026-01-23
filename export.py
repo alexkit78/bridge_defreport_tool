@@ -253,6 +253,8 @@ def replace_in_paragraph(paragraph: Paragraph, mapping: dict):
     for key, val in mapping.items():
         new_text = new_text.replace(key, "" if val is None else str(val))
 
+    new_text = _format_units_for_docx(new_text)
+
     if new_text == full_text:
         return
 
@@ -367,6 +369,15 @@ def _normalize_dash(text: str) -> str:
         return "–"
     # заменяем только дефис-разделитель с пробелами
     return str(text).replace(" - ", " – ")
+
+def _format_units_for_docx(text: str) -> str:
+    if not text:
+        return text
+    return (
+        text
+        .replace("м2", "м²")
+        .replace("м3", "м³")
+    )
 
 def _keep_highlight_if_empty(s: str) -> str:
     # NBSP чтобы подсветка маркером (заливка) визуально оставалась
@@ -598,7 +609,7 @@ def fill_defects_table(doc: Document, defects: list):
             cells[0].text = str(counter)
             cells[1].text = rec.get("location", "")
             cells[2].text = rec.get("name", "")
-            cells[3].text = rec.get("option", "")
+            cells[3].text = _format_units_for_docx(rec.get("option", ""))
 
             cats = []
             if rec.get("safety"):

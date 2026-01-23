@@ -81,6 +81,9 @@ class DefectsTabMixin:
 
         self.unit_label = ttk.Label(qty_right_frame, text="Ед.изм.: —")
         self.unit_label.pack(side="left", padx=(10, 0))
+        self.calc_btn = ttk.Button(qty_right_frame, text="Рассчитать", command=self.calculate_qty)
+        self.calc_btn.pack(side="left", padx=(10, 0))
+        self.calc_btn.config(state="disabled")
 
 
         ttk.Label(frame, text="Мероприятия по устранению дефекта:").grid(
@@ -235,8 +238,9 @@ class DefectsTabMixin:
         self.defect_numodm_map.clear()
         self.defect_categories_by_option.clear()
         self.defect_unit_by_option = {}
+        self.defect_rule_by_option = {}
 
-        for num_odm, name, option, s, d, r, l, localization, units in rows:
+        for num_odm, name, option, s, d, r, l, localization, units, qty_rule in rows:
             key = (name, localization or "")
             self.defect_numodm_map[key] = (
             num_odm, placement, localization or "")
@@ -249,6 +253,7 @@ class DefectsTabMixin:
 
             self.defect_categories_by_option[(name, option)] = (s, d, r, l)
             self.defect_unit_by_option[(name, option)] = units or ""
+            self.defect_rule_by_option[(name, option)] = qty_rule or ""
 
         # Combobox с отображением локализации
         self.defect_cb["values"] = sorted(
@@ -341,12 +346,39 @@ class DefectsTabMixin:
                 unit = ""
 
             self.unit_label.config(text=f"Ед.изм.: {unit if unit else '—'}")
+            rule = ""
+            try:
+                rule = self.defect_rule_by_option.get((defect_name, option), "") or ""
+            except Exception:
+                rule = ""
+
+            # сохраняем выбранное правило (чтобы calculate_qty знала, что считать)
+            self.current_qty_rule = rule
+
+            if hasattr(self, "calc_btn"):
+                if rule and rule.upper() != "MANUAL":
+                    self.calc_btn.config(state="normal")
+                else:
+                    self.calc_btn.config(state="disabled")
 
             self.qty_entry.delete(0, tk.END)
 
     def update_status_bar(self):
         total = len(self.project["defects"])
         self.count_label.config(text=f"Всего дефектов: {total}")
+
+    def _qty_prefix_by_unit(self, unit: str) -> str:
+        u = (unit or "").lower().replace(" ", "")
+        if u in {"м2", "м²"}:
+            return "F"
+        if u == "м":
+            return "L"
+        if u in {"мм", "см"}:
+            return "T"
+        if u in {"шт", "pcs"}:
+            return "N"
+        return ""
+
     def add_entry(self):
         placement = self.placement_cb.get()
         location = self.location_entry.get()
@@ -381,11 +413,13 @@ class DefectsTabMixin:
 
         option_full = option
         if qty:
+            prefix = self._qty_prefix_by_unit(unit_text)
+            sign = f"{prefix} =" if prefix else "="
             # добавляем значение с новой строки
             if unit_text:
-                option_full = f"{option_full}\n= {qty} {unit_text}".strip()
+                option_full = f"{option_full}\n{sign} {qty} {unit_text}".strip()
             else:
-                option_full = f"{option_full}\n= {qty}".strip()
+                option_full = f"{option_full}\n{sign} {qty}".strip()
 
         rec = {
             'uid': uid,
@@ -542,3 +576,52 @@ class DefectsTabMixin:
             self.table.delete(iid)
         self.update_status_bar()
         self.is_dirty = True
+
+    def calculate_qty(self):
+        rule = getattr(self, "current_qty_rule", "") or ""
+        rule = rule.upper().strip()
+
+        bridge = self.project.get("bridge", {})
+
+        def _to_float(value: str):
+            s = (value or "").strip().replace(",", ".")
+            if s == "":
+                return None
+            try:
+                return float(s)
+            except ValueError:
+                return None
+
+        if rule == "DECK_AREA_G":
+            length = _to_float(bridge.get("length", ""))
+            width_g = _to_float(bridge.get("width_G", ""))
+            if length is None or width_g is None:
+                messagebox.showwarning(
+                    "Недостаточно данных",
+                    "Для расчёта нужно заполнить на Форме 1:\n"
+                    "• Длина сооружения\n"
+                    "• Ширина проезжей части Г"
+                )
+                return
+            area = length * width_g
+            self.qty_entry.delete(0, tk.END)
+            self.qty_entry.insert(0, f"{area:.2f}".replace(".", ","))
+
+        elif rule == "SIDEWALK_AREA_T":
+            length = _to_float(bridge.get("length", ""))
+            t1 = _to_float(bridge.get("width_T1", "")) or 0.0
+            t2 = _to_float(bridge.get("width_T2", "")) or 0.0
+            if length is None or (t1 + t2) == 0.0:
+                messagebox.showwarning(
+                    "Недостаточно данных",
+                    "Для расчёта нужно заполнить на Форме 1:\n"
+                    "• Длина сооружения\n"
+                    "• Ширина тротуаров T1 и/или T2"
+                )
+                return
+            area = length * (t1 + t2)
+            self.qty_entry.delete(0, tk.END)
+            self.qty_entry.insert(0, f"{area:.2f}".replace(".", ","))
+
+        else:
+            messagebox.showinfo("Расчёт", "Для этого дефекта расчёт не настроен.")
