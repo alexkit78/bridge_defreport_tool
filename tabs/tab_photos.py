@@ -1,3 +1,4 @@
+#tabs/tab_photos.py
 import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -39,6 +40,8 @@ class PhotosTabMixin:
         self.cover_photo_cb.bind("<<ComboboxSelected>>", self.on_cover_selected)
 
         self.cover_caption_var = tk.StringVar()
+        self.cover_caption_var.trace_add("write", lambda *_: self._save_cover_caption())
+        
         ttk.Entry(
             cover_frame,
             textvariable=self.cover_caption_var
@@ -60,6 +63,7 @@ class PhotosTabMixin:
         self.photos_table.column("caption", width=400)
 
         self.photos_table.pack(fill="both", expand=True, pady=5)
+        self.photos_table.bind("<Double-1>", self._start_edit_caption)
 
         btns = ttk.Frame(gallery_frame)
         btns.pack(fill="x")
@@ -72,6 +76,52 @@ class PhotosTabMixin:
     # =====================================================
     # ЛОГИКА
     # =====================================================
+    def _save_cover_caption(self):
+            self._ensure_photos_block()
+            self.project["photos"]["cover"]["caption"] = self.cover_caption_var.get()
+            if not getattr(self, "is_loading", False):
+                self.is_dirty = True
+    
+    def _start_edit_caption(self, event):
+        region = self.photos_table.identify("region", event.x, event.y)
+        if region != "cell":
+            return
+
+        row_id = self.photos_table.identify_row(event.y)
+        col = self.photos_table.identify_column(event.x)
+        if not row_id or col != "#2":  # редактируем только "caption"
+            return
+
+        bbox = self.photos_table.bbox(row_id, col)
+        if not bbox:
+            return
+        x, y, w, h = bbox
+
+        old = self.photos_table.item(row_id, "values")[1]
+
+        entry = tk.Entry(self.photos_table)
+        entry.place(x=x, y=y, width=w, height=h)
+        entry.insert(0, old)
+        entry.focus_set()
+
+        def save(_=None):
+            new_text = entry.get()
+            entry.destroy()
+
+            idx = int(row_id)
+            self.project["photos"]["gallery"][idx]["caption"] = new_text
+            self.refresh_gallery_table()
+
+            if not getattr(self, "is_loading", False):
+                self.is_dirty = True
+
+        def cancel(_=None):
+            entry.destroy()
+
+        entry.bind("<Return>", save)
+        entry.bind("<FocusOut>", save)
+        entry.bind("<Escape>", cancel)
+
     def _ensure_photos_block(self):
         if "photos" not in self.project:
             self.project["photos"] = {
@@ -79,6 +129,14 @@ class PhotosTabMixin:
                 "cover": {"filename": "", "caption": ""},
                 "gallery": []
             }
+
+    def refresh_photos_tab_from_project(self):
+        self._ensure_photos_block()
+        folder = self.project["photos"].get("folder", "") or ""
+        self.photos_folder_var.set(folder)
+
+        self.refresh_cover_controls()
+        self.refresh_gallery_table()
 
     def select_photos_folder(self):
         self._ensure_photos_block()
@@ -89,22 +147,31 @@ class PhotosTabMixin:
         self.project["photos"]["folder"] = folder
         self.photos_folder_var.set(folder)
 
-        files = [
-            f for f in os.listdir(folder)
-            if f.lower().endswith((".jpg", ".jpeg", ".png"))
-        ]
-
-        self.cover_photo_cb["values"] = files
-
         if not getattr(self, "is_loading", False):
             self.is_dirty = True
+
+        self.refresh_cover_controls()
+        self.refresh_gallery_table()
+
+    def refresh_cover_controls(self):
+            self._ensure_photos_block()
+            folder = self.project["photos"].get("folder", "") or ""
+
+            files = []
+            if folder and os.path.isdir(folder):
+                files = [f for f in os.listdir(folder) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+                files.sort(key=lambda s: s.lower())
+
+            self.cover_photo_cb["values"] = files
+
+            cover = self.project["photos"].get("cover", {}) or {}
+            self.cover_photo_cb.set(cover.get("filename", "") or "")
+            self.cover_caption_var.set(cover.get("caption", "") or "")
 
     def on_cover_selected(self, event=None):
         self._ensure_photos_block()
         filename = self.cover_photo_cb.get()
         self.project["photos"]["cover"]["filename"] = filename
-        self.project["photos"]["cover"]["caption"] = self.cover_caption_var.get()
-
         if not getattr(self, "is_loading", False):
             self.is_dirty = True
 
@@ -151,8 +218,16 @@ class PhotosTabMixin:
         if not sel:
             return
 
-        index = int(sel[0])
-        del self.project["photos"]["gallery"][index]
+        try:
+            index = int(sel[0])
+        except ValueError:
+            return
+
+        gallery = self.project["photos"]["gallery"]
+        if index < 0 or index >= len(gallery):
+            return
+
+        del gallery[index]
         self.refresh_gallery_table()
 
         if not getattr(self, "is_loading", False):

@@ -104,7 +104,7 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin,P
             self.root.after(2000, lambda: self.status_label.config(text=""))
             return True
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось сохранить файл:\n{e}")
+            messagebox.showerror("Ошибка", f"Не удалось сохранить паспорт:\n{e}")
             return False
         
     def save_report(self):
@@ -184,6 +184,7 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin,P
             )
 
         self.update_status_bar()
+        self.refresh_photos_tab_from_project()
         self.status_label.config(text="Данные загружены")
         self.root.after(2000, lambda: self.status_label.config(text=""))
         self.is_dirty = False
