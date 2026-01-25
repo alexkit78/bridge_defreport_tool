@@ -2,6 +2,7 @@
 import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from tabs.photo_viewer import PhotoViewerWindow
 
 
 class PhotosTabMixin:
@@ -30,6 +31,8 @@ class PhotosTabMixin:
             text="Выбрать папку",
             command=self.select_photos_folder
         ).pack(side="left")
+
+
 
         # ---------- ФОТО ТИТУЛЬНОГО ЛИСТА ----------
         cover_frame = ttk.LabelFrame(frame, text="Фото титульного листа", padding=10)
@@ -72,10 +75,26 @@ class PhotosTabMixin:
             .pack(side="left")
         ttk.Button(btns, text="Удалить", command=self.delete_gallery_photo)\
             .pack(side="left", padx=5)
+        def open_viewer():
+            folder = self.project.get("photos", {}).get("folder", "")
+            if not folder:
+                messagebox.showwarning(
+                    "Нет папки",
+                    "Сначала выберите папку с фотографиями"
+                )
+                return
+            PhotoViewerWindow(self.root, self.project, on_update=self._on_gallery_updated_from_viewer)
+        ttk.Button(btns, text="Просмотр фото", command=open_viewer)\
+    .pack(side="left", padx=10)
 
     # =====================================================
     # ЛОГИКА
     # =====================================================
+    def _on_gallery_updated_from_viewer(self):
+        self.refresh_gallery_table()
+        if not getattr(self, "is_loading", False):
+            self.is_dirty = True
+    
     def _save_cover_caption(self):
             self._ensure_photos_block()
             self.project["photos"]["cover"]["caption"] = self.cover_caption_var.get()
