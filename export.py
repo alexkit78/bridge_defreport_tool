@@ -1,16 +1,18 @@
 # export.py
 import shutil
 import re
+import os
 from collections import defaultdict
 
 from docx import Document
 from docx.document import Document as _Document
 from docx.table import Table
 from docx.text.paragraph import Paragraph
-from docx.shared import Pt
+from docx.shared import Pt, Cm
 from docx.enum.table import WD_ALIGN_VERTICAL
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from copy import deepcopy
+from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 from constants import TEMPLATE_PATH, REPORT_TEMPLATE_PATH
@@ -55,7 +57,13 @@ def find_paragraph_with_marker(doc: Document, marker: str) -> Paragraph | None:
     return None
 
 def insert_element_after(reference, new_element):
-    reference._element.addnext(new_element)
+    """
+    reference может быть:
+    - Paragraph (тогда есть ._element)
+    - XML элемент CT_P/CT_Tbl (тогда addnext прямо на нём)
+    """
+    ref_elm = getattr(reference, "_element", reference)
+    ref_elm.addnext(new_element)
 
 def _is_paragraph_elm(elm) -> bool:
     return elm.tag == qn("w:p")
@@ -209,6 +217,181 @@ def remove_marker_everywhere(doc: Document, marker: str):
                             for run in p.runs:
                                 if marker in run.text:
                                     run.text = run.text.replace(marker, "")
+
+def _safe_join(folder: str, filename: str) -> str:
+    if not folder or not filename:
+        return ""
+    return os.path.join(folder, filename)
+
+def _insert_picture_at_marker(doc: Document, marker: str, image_path: str, w_cm: float, h_cm: float):
+    """
+    Находит абзац с marker, удаляет marker, и вставляет картинку в этот абзац.
+    Если картинки нет — просто убирает marker (остаётся пустое место).
+    """
+    p = find_paragraph_with_marker(doc, marker)
+    if p is None:
+        return
+
+    # убираем маркер из текста
+    p.text = p.text.replace(marker, "").strip()
+
+    if not image_path or not os.path.isfile(image_path):
+        return  # оставляем пустое место
+
+    run = p.add_run()
+    inline = run.add_picture(image_path, width=Cm(w_cm), height=Cm(h_cm))
+    _ensure_effect_extent(inline, border_width_pt=0.75)
+    _add_picture_border_inline(inline, width_pt=0.75)
+
+def _add_picture_border_inline(inline, width_pt=0.75, color_hex="000000"):
+    """
+    Добавляет чёрную рамку вокруг InlineShape (картинки).
+    inline: объект, который возвращает run.add_picture() (InlineShape)
+    """
+    width_emu = int(width_pt * 12700)
+
+    try:
+        inline_elm = inline._inline  # wp:inline
+    except Exception:
+        return
+
+    # ищем pic:pic без namespaces, чтобы не ловить ошибки
+    pics = inline_elm.xpath(".//*[local-name()='pic']")
+    if not pics:
+        return
+    pic = pics[0]
+
+    # внутри pic ищем spPr
+    spPr = None
+    for child in pic.iterchildren():
+        if child.tag.endswith("}spPr"):
+            spPr = child
+            break
+
+    if spPr is None:
+        spPr = OxmlElement("pic:spPr")
+        pic.append(spPr)
+
+    # удалить старые линии (если были)
+    for old_ln in spPr.xpath("./*[local-name()='ln']"):
+        spPr.remove(old_ln)
+
+    ln = OxmlElement("a:ln")
+    ln.set("w", str(width_emu))
+    ln.set("algn", "in")
+
+    solidFill = OxmlElement("a:solidFill")
+    srgbClr = OxmlElement("a:srgbClr")
+    srgbClr.set("val", color_hex)
+    solidFill.append(srgbClr)
+    ln.append(solidFill)
+
+    prstDash = OxmlElement("a:prstDash")
+    prstDash.set("val", "solid")
+    ln.append(prstDash)
+
+    ln.append(OxmlElement("a:round"))
+    spPr.append(ln)
+
+def _pt_to_emu(pt: float) -> int:
+    # 1 pt = 12700 EMU
+    return int(round(pt * 12700))
+
+def _ensure_effect_extent(inline, border_width_pt: float = 0.75):
+    """
+    Добавляет/обновляет wp:effectExtent у wp:inline,
+    чтобы Picture Border не клиппился (особенно сверху).
+    """
+    # ВАЖНО:
+    # Word клиппит picture border без wp:effectExtent.
+    # Без этого рамка может пропадать сверху (и в PDF тоже).
+    # Не удалять _ensure_effect_extent!
+    try:
+        inline_elm = inline._inline  # wp:inline
+    except Exception:
+        return
+
+    pad = _pt_to_emu(border_width_pt)
+
+    # ищем effectExtent без namespaces (python-docx иногда ругается на namespaces)
+    eff = inline_elm.xpath(".//*[local-name()='effectExtent']")
+    if eff:
+        eff = eff[0]
+    else:
+        eff = OxmlElement("wp:effectExtent")
+
+        # вставить по порядку: после wp:extent
+        extent = inline_elm.xpath("./*[local-name()='extent']")
+        if extent:
+            extent = extent[0]
+            extent.addnext(eff)
+        else:
+            inline_elm.insert(0, eff)
+
+    eff.set("l", str(pad))
+    eff.set("t", str(pad))
+    eff.set("r", str(pad))
+    eff.set("b", str(pad))
+
+def _fill_photos_gallery(doc: Document, marker: str, photos: list, folder: str, w_cm: float, h_cm: float):
+    """
+    Вставляет блок фотографий:
+    - всё по центру
+    - размер шрифта подписи 14 pt
+    - подпись ПОД фото: "Фото N. Описание"
+    - space after paragraph, чтобы между блоками был промежуток
+    """
+    p = find_paragraph_with_marker(doc, marker)
+    if p is None:
+        return
+
+    # Если фото нет — просто убираем маркер
+    if not photos:
+        p.text = p.text.replace(marker, "")
+        return
+
+    # Удаляем маркер-текст
+    p.text = p.text.replace(marker, "").strip()
+
+    # Вставляем элементы ПОСЛЕ этого абзаца
+    ref = p._element
+
+    num = 1
+    for rec in photos:
+        filename = (rec or {}).get("filename", "") or ""
+        caption = (rec or {}).get("caption", "") or ""
+        img_path = _safe_join(folder, filename)
+
+        # --- 1) абзац с картинкой (по центру) ---
+        pic_p = p._parent.add_paragraph()
+        pic_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        pf = pic_p.paragraph_format
+        pf.line_spacing_rule = WD_LINE_SPACING.SINGLE 
+        pf.space_after = Pt(4)
+
+        if img_path and os.path.isfile(img_path):
+            run = pic_p.add_run()
+            inline = run.add_picture(img_path, width=Cm(w_cm), height=Cm(h_cm))
+            _ensure_effect_extent(inline, border_width_pt=0.75)
+            _add_picture_border_inline(inline, width_pt=0.75)
+
+        insert_element_after(ref, pic_p._element)
+        ref = pic_p._element
+
+        # --- 2) подпись под фото (по центру, 14 pt) ---
+        cap_p = p._parent.add_paragraph()
+        cap_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        pf = cap_p.paragraph_format
+        pf.line_spacing_rule = WD_LINE_SPACING.SINGLE
+        pf.space_after = Pt(8)
+
+        r = cap_p.add_run(f"Фото {num}. {caption}".strip())
+        r.font.size = Pt(14)
+
+        insert_element_after(ref, cap_p._element)
+        ref = cap_p._element
+
+        num += 1
 
 
 # ==================================================
@@ -638,7 +821,7 @@ def fill_defects_table(doc: Document, defects: list):
 
 
 # ==================================================
-# MAIN EXPORT (BRIDGE PASSPORT)
+# EXPORT (BRIDGE PASSPORT)
 # ==================================================
 
 def export_to_docx(file_path: str, project: dict):
@@ -681,10 +864,25 @@ def export_to_docx(file_path: str, project: dict):
     # ---------- Форма 5 (дефекты defects.*) ----------
     fill_defects_table(doc, project.get("defects", []))
 
+
+    # --- ФОТО ---
+    photos = project.get("photos", {}) or {}
+    folder = photos.get("folder", "") or ""
+
+    cover = (photos.get("cover", {}) or {}).get("filename", "") or ""
+    cover_path = os.path.join(folder, cover) if folder and cover else ""
+
+    _insert_picture_at_marker(doc, "{{PHOTO_COVER}}", cover_path, w_cm=17.0, h_cm=12.0)
+
+
+    gallery = photos.get("gallery", []) or []
+    _fill_photos_gallery(doc, "{{PHOTOS_SECTION}}", gallery, folder, w_cm=16.0, h_cm=11.0)
+
+    # --- SAVING ---
     doc.save(file_path)
 
 # ==================================================
-# REPORT EXPORT (TECHNICAL REPORT)
+# EXPORT (TECHNICAL REPORT)
 # ==================================================
 
 def prepare_indexed_list_mapping(items: list, prefix: str) -> dict:
@@ -752,8 +950,18 @@ def export_report_to_docx(file_path: str, project: dict):
     piers = project.get("piers", [])
     replace_placeholders_everywhere(doc, prepare_indexed_list_mapping(piers, "pier"))
 
-    # --- убрать маркер фото, пока не поддерживаем ---
-    remove_marker_everywhere(doc, "{{PHOTO_COVER}}")
+    # --- ФОТО ---
+    photos = project.get("photos", {}) or {}
+    folder = photos.get("folder", "") or ""
+
+    cover = (photos.get("cover", {}) or {}).get("filename", "") or ""
+    cover_path = os.path.join(folder, cover) if folder and cover else ""
+
+    _insert_picture_at_marker(doc, "{{PHOTO_COVER}}", cover_path, w_cm=17.0, h_cm=12.0)
+
+    gallery = photos.get("gallery", []) or []
+    _fill_photos_gallery(doc, "{{PHOTOS_SECTION}}", gallery, folder, w_cm=16.0, h_cm=11.0)
+
 
     # --- таблица дефектов ---
     fill_defects_table(doc, project.get("defects", []))

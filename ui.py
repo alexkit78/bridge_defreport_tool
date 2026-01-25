@@ -13,9 +13,10 @@ from tabs.tab_general import GeneralTabMixin
 from tabs.tab_spans import SpansTabMixin
 from tabs.tab_piers import PiersTabMixin
 from tabs.tab_defects import DefectsTabMixin
+from tabs.tab_photos import PhotosTabMixin
 
 
-class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
+class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin,PhotosTabMixin):
     def __init__(self, root):
         self.root = root
         self.is_loading = True
@@ -39,11 +40,13 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
         self.tab_spans = ttk.Frame(self.notebook)
         self.tab_piers = ttk.Frame(self.notebook)
         self.tab_defects = ttk.Frame(self.notebook)
+        self.tab_photos = ttk.Frame(self.notebook)
 
         self.notebook.add(self.tab_general, text="Общие сведения")
         self.notebook.add(self.tab_spans, text="Пролётные строения")
         self.notebook.add(self.tab_piers, text="Опоры")
         self.notebook.add(self.tab_defects, text="Дефекты")
+        self.notebook.add(self.tab_photos, text="Фотографии")
 
 
         self.bridge_vars = {}  # ключ поля -> tk.StringVar
@@ -101,7 +104,7 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
             self.root.after(2000, lambda: self.status_label.config(text=""))
             return True
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось сохранить файл:\n{e}")
+            messagebox.showerror("Ошибка", f"Не удалось сохранить паспорт:\n{e}")
             return False
         
     def save_report(self):
@@ -181,6 +184,7 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
             )
 
         self.update_status_bar()
+        self.refresh_photos_tab_from_project()
         self.status_label.config(text="Данные загружены")
         self.root.after(2000, lambda: self.status_label.config(text=""))
         self.is_dirty = False
@@ -217,6 +221,7 @@ class DefectApp(GeneralTabMixin, SpansTabMixin, PiersTabMixin, DefectsTabMixin):
         self.build_tab_general()
         self.build_tab_spans()
         self.build_tab_piers()
+        self.build_tab_photos()
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
