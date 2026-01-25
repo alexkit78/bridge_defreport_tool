@@ -1,6 +1,8 @@
 #tabs/tab_photos.py
 import os
 import tkinter as tk
+import requests
+import certifi
 from tkinter import ttk, filedialog, messagebox
 from tabs.photo_viewer import PhotoViewerWindow
 
@@ -31,6 +33,12 @@ class PhotosTabMixin:
             text="Выбрать папку",
             command=self.select_photos_folder
         ).pack(side="left")
+
+        ttk.Button(
+            folder_frame,
+            text="Создать фото карты",
+            command=self.create_map_photo
+        ).pack(side="left", padx=8)
 
 
 
@@ -263,3 +271,68 @@ class PhotosTabMixin:
                 iid=str(i),
                 values=(rec.get("filename", ""), rec.get("caption", ""))
             )
+
+    def create_map_photo(self):
+        bridge = self.project.get("bridge", {})
+        coord = bridge.get("coord", "")
+        folder = self.project.get("photos", {}).get("folder", "")
+
+        if not coord or "," not in coord:
+            messagebox.showerror(
+                "Нет координат",
+                "В форме «Общие сведения» не заданы координаты моста"
+            )
+            return
+
+        if not folder:
+            messagebox.showwarning(
+                "Нет папки",
+                "Сначала выберите папку с фотографиями"
+            )
+            return
+
+        lat, lon = [c.strip() for c in coord.split(",")]
+
+        url = (
+            "https://static-maps.yandex.ru/1.x/"
+            f"?ll={lon},{lat}"
+            "&z=15"
+            "&size=650,450"
+            "&l=map"
+            f"&pt={lon},{lat},pm2rdm"
+        )
+
+        filename = "_map_bridge.png"
+        path = os.path.join(folder, filename)
+
+        try:
+            r = requests.get(url, timeout=20, verify=certifi.where())
+            r.raise_for_status()
+            with open(path, "wb") as f:
+                f.write(r.content)
+        except Exception as e:
+            messagebox.showerror("Ошибка карты", str(e))
+            return
+
+        caption = (
+            "Ситуационный план расположения моста.\n"
+            f"Координаты расположения моста ({lat}, {lon})"
+        )
+
+        gallery = self.project["photos"]["gallery"]
+
+        # если карта уже есть — обновляем
+        for rec in gallery:
+            if rec["filename"] == filename:
+                rec["caption"] = caption
+                break
+        else:
+            gallery.insert(0, {
+                "filename": filename,
+                "caption": caption
+            })
+
+        self.refresh_gallery_table()
+
+        if not getattr(self, "is_loading", False):
+            self.is_dirty = True
