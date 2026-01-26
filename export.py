@@ -2,6 +2,8 @@
 import shutil
 import re
 import os
+import tempfile
+from PIL import Image
 from collections import defaultdict
 
 from docx import Document
@@ -237,9 +239,16 @@ def _insert_picture_at_marker(doc: Document, marker: str, image_path: str, w_cm:
 
     if not image_path or not os.path.isfile(image_path):
         return  # оставляем пустое место
+    
+    tmp_dir = getattr(doc, "_img_tmp_dir", None)
+    if not tmp_dir:
+        tmp_dir = tempfile.mkdtemp(prefix="bridge_docx_imgs_")
+        doc._img_tmp_dir = tmp_dir
+
+    img_for_docx = _prepare_image_for_docx(image_path, w_cm, h_cm, tmp_dir, dpi=250, quality=85)
 
     run = p.add_run()
-    inline = run.add_picture(image_path, width=Cm(w_cm), height=Cm(h_cm))
+    inline = run.add_picture(img_for_docx, width=Cm(w_cm), height=Cm(h_cm))
     _ensure_effect_extent(inline, border_width_pt=0.75)
     _add_picture_border_inline(inline, width_pt=0.75)
 
@@ -370,8 +379,13 @@ def _fill_photos_gallery(doc: Document, marker: str, photos: list, folder: str, 
         pf.space_after = Pt(4)
 
         if img_path and os.path.isfile(img_path):
+            tmp_dir = getattr(doc, "_img_tmp_dir", None)
+            if not tmp_dir:
+                tmp_dir = tempfile.mkdtemp(prefix="bridge_docx_imgs_")
+                doc._img_tmp_dir = tmp_dir
+            img_for_docx = _prepare_image_for_docx(img_path, w_cm, h_cm, tmp_dir, dpi=250, quality=85)
             run = pic_p.add_run()
-            inline = run.add_picture(img_path, width=Cm(w_cm), height=Cm(h_cm))
+            inline = run.add_picture(img_for_docx, width=Cm(w_cm), height=Cm(h_cm))
             _ensure_effect_extent(inline, border_width_pt=0.75)
             _add_picture_border_inline(inline, width_pt=0.75)
 
@@ -392,6 +406,59 @@ def _fill_photos_gallery(doc: Document, marker: str, photos: list, folder: str, 
         ref = cap_p._element
 
         num += 1
+
+def _cm_to_px(cm: float, dpi: int) -> int:
+    inches = cm / 2.54
+    return int(round(inches * dpi))
+
+def _center_crop_to_ratio(img: Image.Image, target_ratio: float) -> Image.Image:
+    w, h = img.size
+    cur_ratio = w / h
+
+    if abs(cur_ratio - target_ratio) < 0.01:
+        return img
+
+    if cur_ratio > target_ratio:
+        # слишком широкая → режем по ширине
+        new_w = int(h * target_ratio)
+        left = (w - new_w) // 2
+        return img.crop((left, 0, left + new_w, h))
+    else:
+        # слишком высокая → режем по высоте
+        new_h = int(w / target_ratio)
+        top = (h - new_h) // 2
+        return img.crop((0, top, w, top + new_h))
+
+def _prepare_image_for_docx(src_path: str, w_cm: float, h_cm: float, out_dir: str,
+                            dpi: int = 220, quality: int = 85) -> str:
+    """
+    Делает ужатую копию изображения под размеры w_cm x h_cm.
+    dpi=200..300: чем больше, тем лучше качество и больше размер docx.
+    """
+    if not src_path or not os.path.isfile(src_path):
+        return src_path
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    target_ratio = w_cm / h_cm
+    target_w_px = _cm_to_px(w_cm, dpi)
+    target_h_px = _cm_to_px(h_cm, dpi)
+
+    try:
+        img = Image.open(src_path)
+        img = img.convert("RGB")  # JPEG
+
+        img = _center_crop_to_ratio(img, target_ratio)
+        img = img.resize((target_w_px, target_h_px), Image.LANCZOS)
+
+        base = os.path.splitext(os.path.basename(src_path))[0]
+        out_path = os.path.join(out_dir, f"{base}_{target_w_px}x{target_h_px}_q{quality}.jpg")
+
+        img.save(out_path, "JPEG", quality=quality, optimize=True, progressive=True)
+        return out_path
+    except Exception:
+        # если что-то пошло не так — вставим оригинал
+        return src_path
 
 
 # ==================================================
