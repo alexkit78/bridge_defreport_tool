@@ -2,7 +2,7 @@
 
 import sys
 import plistlib
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 APP_NAME = 'Bridge Report Tool'
 
@@ -15,9 +15,10 @@ datas = [
     ('report_template.docx', '.'),
     ('inspection_report_template.docx', '.'),
 ]
+datas += collect_data_files('docx', includes=['templates/*.xml'])
 
-# --- Including python-docx module ---
-hiddenimports = collect_submodules('docx')
+# --- Including needed modules ---
+hiddenimports = (collect_submodules('docx') + ['requests'])
 
 # --- platform-specific metadata ---
 info_plist = None
