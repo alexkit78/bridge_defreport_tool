@@ -174,7 +174,9 @@ class DefectsTabMixin:
         
         for cls in ("Entry", "TEntry", "Text", "TCombobox"):
             self.root.bind_class(cls, "<Control-KeyPress>", self._ctrl_hotkeys_any_layout)
-            self.root.bind_class(cls, "<Command-KeyPress>", self._ctrl_hotkeys_any_layout)
+
+            if sys.platform == "darwin":
+                self.root.bind_class(cls, "<Command-KeyPress>", self._ctrl_hotkeys_any_layout)
 
 
 
