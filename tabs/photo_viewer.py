@@ -123,15 +123,7 @@ class PhotoViewerWindow(tk.Toplevel):
                     self.on_update()
                 return
             
-    def _toggle_include_hotkey(self, event=None):
-        # чтобы пробел в поле подписи печатался как пробел
-        if self.focus_get() == self.caption_entry:
-            return
 
-        self.include_var.set(not self.include_var.get())
-        self.on_toggle_include()
-        return "break"
-    
     def _enter_accept_hotkey(self, event=None):
         # Enter: включить/выключить и сразу в подпись
         self.include_var.set(not self.include_var.get())
@@ -146,6 +138,8 @@ class PhotoViewerWindow(tk.Toplevel):
 
     def _toggle_include_hotkey(self, event=None):
         # Ctrl/Cmd+Space: toggle без конфликтов с вводом пробела
+        if self.focus_get() == self.caption_entry:
+            return
         self.include_var.set(not self.include_var.get())
         self.on_toggle_include()
         return "break"
