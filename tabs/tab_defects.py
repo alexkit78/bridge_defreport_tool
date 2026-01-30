@@ -680,5 +680,24 @@ class DefectsTabMixin:
             self.qty_entry.delete(0, tk.END)
             self.qty_entry.insert(0, f"{area:.2f}".replace(".", ","))
 
+        # TODO: Enable BRIDGE_APPROACH_AREA after testing
+    
+        # elif rule == "BRIDGE_APPROACH_AREA":
+        #     approach_length1, approach_length2 = 25, 25
+        #     width1 = _to_float(bridge.get("approach_width1", "")) or 0.0
+        #     width2 = _to_float(bridge.get("approach_width2", "")) or 0.0
+        #     if width1 == 0.0 or width2 == 0.0:
+        #         messagebox.showwarning(
+        #             "Недостаточно данных",
+        #             "Для расчёта нужно заполнить на Форме 1:\n"
+        #             "• Ширина подхода 1\n"
+        #             "• Ширина подхода 2"
+        #         )
+        #         return
+        #     area = approach_length1 * width1 + approach_length2 * width2
+        #     self.qty_entry.delete(0, tk.END)
+        #     self.qty_entry.insert(0, f"{area:.2f}".replace(".", ","))
+
+
         else:
             messagebox.showinfo("Расчёт", "Для этого дефекта расчёт не настроен.")
